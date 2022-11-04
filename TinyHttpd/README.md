@@ -13,7 +13,7 @@
 ### 源码拓展
 
 ```c
-// htpd.c-main()
+// httpd.c-main()
 u_short port = 4000;        // 服务器套接字监听的端口
 ```
 
@@ -26,6 +26,30 @@ u_short port = 4000;        // 服务器套接字监听的端口
 - port最大为655532(2^16 - 1), short类型在32/64位都是2字节，使用无符号short刚好能表示所有port
 
 ---
+
+```c
+// httpd.c - error_die
+perror(sc);
+```
+- `void perror(const char *str)`: C库函数，把一个描述性错误输出到标准错误stderr. 首先输出字符串 str，后跟一个冒号，然后是一个空格
+
+---
+
+```c
+// httpd.c - startup()
+if((setsockopt(serv_sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on))) < 0)
+ 38                 error_handling("setsockopt() error");
+```
+- 为什们要取消Time-wait?
+  - 首先，要了解Time-wait,主要影响是当服务器端主动断开连接后，由于TCP的特性，导致关闭的服务器套接字不能立刻被使用
+  - 通常，一旦服务器向客户端发送了响应信息，那么就会关闭TCPL连接。但是，默认HTTP/1.0协议会设置`connection:keep-Acliev`, 那么 TCP 连接在服务器返回信息后，仍然保持打开状态，也就是只有当客户端主动关闭页面时（针对Web服务器）才会断开连接。在这种场景下，始终有客户端主动断开，所以就不需要time-wait了.
+---
+```c
+// httpd.c - startup()
+if (*port == 0)  /* if dynamically allocating a port */
+```
+-  不太懂这里为什么需要这样一个判断，感觉没有必要，因此从代码上看，port一定是4000
+- 当一个知识点就好： **当port=0时,bind会随机为套接字绑定端口**
 
 ```c
 // htpd.c-main()
@@ -91,9 +115,16 @@ sprintf(buf, "HTTP/1.0 501 Method Not Implemented\r\n");
   - Mac系统里，每行结尾是“**<回车>**”,即`\r`。
 
 ---
+```c
+// httpd.c - getline()
+int get_line(int sock, char *buf, int size)
+```
+-  该函数的作用是确保buf中最后以\n结尾，最终buf后两个字符为\n\0
+-  个人认为原始是该程序在Unix系统下运行，每行结尾只要\n即可，但是HTTP请求头每行结尾\r\n
+> 感觉没必要，因为HTTP请求每行一定是以\r\n结束，为什么不直接利用`recv()`读取一行呢？
 
 ```c
-//  htpd.c - accept_request ()
+//  httpd.c - accept_request ()
 if (stat(path, &st) == -1) 
     //...
     ;

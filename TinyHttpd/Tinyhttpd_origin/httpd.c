@@ -358,7 +358,7 @@ void execute_cgi(int client, const char *path,
  * Returns: the number of bytes stored (excluding null) */
 /**********************************************************************/
 /*
-    读取消息头，但是不要包括行末尾的转义字符(\r,\n,\r\n)
+    读取消息头，确保最后是\n结尾，最终buf末尾两个字符是\n\0
 */
 int get_line(int sock, char *buf, int size)
 {
