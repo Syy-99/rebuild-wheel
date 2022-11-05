@@ -121,7 +121,7 @@ int get_line(int sock, char *buf, int size)
 ```
 -  该函数的作用是确保buf中最后以\n结尾，最终buf后两个字符为\n\0
 -  个人认为原始是该程序在Unix系统下运行，每行结尾只要\n即可，但是HTTP请求头每行结尾\r\n
-> 感觉没必要，因为HTTP请求每行一定是以\r\n结束，为什么不直接利用`recv()`读取一行呢？
+> Q: 感觉没必要，因为HTTP请求每行一定是以\r\n结束，为什么不直接利用`recv()`读取一行呢？
 
 ```c
 //  httpd.c - accept_request ()
