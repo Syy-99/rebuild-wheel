@@ -81,7 +81,9 @@ static void alarm_handler(int signal)
 {
     timerexpired=1;
 }	
-
+/*
+    输出提示信息
+*/
 static void usage(void)
 {
     fprintf(stderr,
@@ -105,16 +107,19 @@ static void usage(void)
 
 int main(int argc, char *argv[])
 {
+    // 读取命令行参数
     int opt=0;
     int options_index=0;
     char *tmp=NULL;
 
-    if(argc==1)
+    if(argc==1) // 如果没有输入额外的参数
     {
-        usage();
+        usage();    // 则输出命令的帮助信息
         return 2;
     } 
-
+    
+    // 开始处理命令行参数
+    // getopt_long是命令行解析的库函数
     while((opt=getopt_long(argc,argv,"912Vfrt:p:c:?h",long_options,&options_index))!=EOF )
     {
         switch(opt)

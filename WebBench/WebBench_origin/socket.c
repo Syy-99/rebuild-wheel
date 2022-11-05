@@ -26,6 +26,14 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
+/*
+    根据服务器地址+端口，创建发起连接请求的客户端套接字
+Args:
+    host: 主机的点分十进制IP or 域名
+    clentPort: 端口号
+Return:
+    套接字的文件描述符
+*/
 int Socket(const char *host, int clientPort)
 {
     int sock;
@@ -36,21 +44,23 @@ int Socket(const char *host, int clientPort)
     memset(&ad, 0, sizeof(ad));
     ad.sin_family = AF_INET;
 
-    inaddr = inet_addr(host);
-    if (inaddr != INADDR_NONE)
-        memcpy(&ad.sin_addr, &inaddr, sizeof(inaddr));
-    else
+    inaddr = inet_addr(host);   //将点分十进制转换位数字
+    if (inaddr != INADDR_NONE)  // 解析成功
+        memcpy(&ad.sin_addr, &inaddr, sizeof(inaddr));  // 复制地址给sockaddr_in对应的成员
+    else    // 解析失败，因为输入的是域名
     {
-        hp = gethostbyname(host);
+        hp = gethostbyname(host); // 通过域名解析获得IP地址
         if (hp == NULL)
             return -1;
         memcpy(&ad.sin_addr, hp->h_addr, hp->h_length);
     }
-    ad.sin_port = htons(clientPort);
+    ad.sin_port = htons(clientPort);    // 主机序 -> 网络序
     
     sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
         return sock;
+    
+    // 发起连接请求
     if (connect(sock, (struct sockaddr *)&ad, sizeof(ad)) < 0)
         return -1;
     return sock;
