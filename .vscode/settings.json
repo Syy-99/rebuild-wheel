@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "crtdefs.h": "c",
+        "*.tcc": "c"
+    }
+}
