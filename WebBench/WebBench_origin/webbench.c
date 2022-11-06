@@ -283,7 +283,7 @@ void build_request(const char *url)
     memset(request, 0, REQUEST_SIZE);
 
      //判断应该使用的http协议(这部分更多是HTTP的知识)
-
+    // 感觉没有必要了，现在基本都是1.1
     //1.缓存和代理都是都是http/1.0以后才有到的
     if (force_reload && proxyhost != NULL && http10 < 1)
         http10 = 1;
@@ -338,27 +338,37 @@ void build_request(const char *url)
     }
 
     /* protocol/host delimiter */
+    // 找到url中主机开始的字符串索引位置
     i = strstr(url, "://") - url + 3;
 
+    //4.从主机名开始的地方开始往后找，没有 '/' 则url非法
     if (strchr(url + i, '/') == NULL)
     {
         fprintf(stderr, "\nInvalid URL syntax - hostname don't ends with '/'.\n");
         exit(2);
     }
 
-    if (proxyhost == NULL)
+    // 判断是否设置代理服务器
+    if (proxyhost == NULL)  
     {
         /* get port from hostname */
-        if (index(url + i, ':') != NULL && index(url + i, ':') < index(url + i, '/'))
+        // 判断是否声明端口. 比如http://www.baidu.com:80/
+        if (index(url + i, ':') != NULL && index(url + i, ':') < index(url + i, '/'))  
         {
+            // 填充主机名到host字符数组，比如www.baidu.com
             strncpy(host, url + i, strchr(url + i, ':') - url - i);
             // bzero(tmp,10);
+
+             //初始化存放端口号的中间数组
             memset(tmp, 0, 10);
+            //切割得到端口号
             strncpy(tmp, index(url + i, ':') + 1, strchr(url + i, '/') - index(url + i, ':') - 1);
             /* printf("tmp=%s\n",tmp); */
+            
+            // 设置端口号
             proxyport = atoi(tmp);
-            if (proxyport == 0)
-                proxyport = 80;
+            if (proxyport == 0) // 有:, 但没有指定具体数值
+                proxyport = 80; // 默认端口号80
         }
         else
         {
