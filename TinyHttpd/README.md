@@ -251,12 +251,115 @@ putenv(meth_env);
      2. accept_request()的函数声明同样修改
      3. accept_requeset()函数的内 retrun -> return NULL
      ```
-
+5. 在当前文件夹下运行`make`命令
 ### 结果
 
 ![image-20221103105905969](my_res/image-20221103105905969.png)
 
 ![image-20221103105923475](my_res/image-20221103105923475.png)
+
+## 拓展：使用Webbench对Tinyhttpd进行测压
+```sh
+syy@syyhost:~/WebBench$ webbench -c 10 -t 30 http://localhost:4000/
+Webbench - Simple Web Benchmark 1.5
+Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.
+
+Request:
+GET / HTTP/1.0
+User-Agent: WebBench 1.5
+Host: localhost
+
+
+Runing info: 10 clients, running 30 sec.
+
+Speed=823252 pages/min, 0 bytes/sec.
+Requests: 0 susceed, 411626 failed.
+```
+- 全部失败，并且httpd程序自动停止
+  - 原因：
+    - WebBench中，构造HTTP请求报文的时候并没有Method字段；TinyHttpd接受到该报文后就会进入`unimplemented()`函数
+    ```c
+    void unimplemented(int client)
+    {
+      char buf[1024];
+      // HTTP method 不被支持
+      sprintf(buf, "HTTP/1.0 501 Method Not Implemented\r\n");
+      send(client, buf, strlen(buf), 0);
+      // 输出服务器信息到网页上
+      sprintf(buf, SERVER_STRING);
+      send(client, buf, strlen(buf), 0);
+      sprintf(buf, "Content-Type: text/html\r\n");
+      send(client, buf, strlen(buf), 0);
+      sprintf(buf, "\r\n");
+      //...
+    }
+    ```
+  - WebBench中，每个子进程在成功发送HTTP请求后就断开,但unimplemented构造HTTP响应包是一步一步调用send的。所以第一次发是成功的，第二次就失败，而且TinyHttpd在send的时候没有异常判断和处理，所以程序卡死
+  > inux下当连接断开，还发数据的时候，不仅send()的返回值会有反映，而且还会向系统发送一个异常消息，如果不作处理，系统会出BrokePipe，程序会退出，这对于服务器提供稳定的服务将造成巨大的灾难。
+
+- 解决：
+  1. 将unimplemented内的所有信息通过一个send发送
+      ```c
+        strcat(buf, "HTTP/1.0 501 Method Not Implemented\r\n");
+        strcat(buf, SERVER_STRING);
+        strcat(buf, "Content-Type: text/html\r\n\r\n<HTML><HEAD><TITLE>Method Not Implemented\r\n</TITLE></HEAD>\r\n<BODY><P>HTTP request method not supported.\r\n</BODY></HTML>\r\n");
+        printf("%s\n",buf);
+        send(client, buf, strlen(buf), 0);
+      ```
+  2. 不让send发送异常消息给系统: 把send函数的最后一个参数设为:MSG_NOSIGNAL.
+```sh
+syy@syyhost:~/WebBench$ webbench -c 10 -t 30 http://localhost:4000/
+Webbench - Simple Web Benchmark 1.5
+Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.
+
+Request:
+GET / HTTP/1.0
+User-Agent: WebBench 1.5
+Host: localhost
+
+
+Runing info: 10 clients, running 30 sec.
+
+Speed=65494 pages/min, 312188 bytes/sec.
+Requests: 32747 susceed, 0 failed.
+
+# ---------------------------------------
+syy@syyhost:~/Tinyhttpd$ ./httpd 
+httpd running on port 4000
+HTTP/1.0 501 Method Not Implemented
+Server: jdbhttpd/0.1.0
+Content-Type: text/html
+
+<HTML><HEAD><TITLE>Method Not Implemented
+</TITLE></HEAD>
+<BODY><P>HTTP request method not supported.
+</BODY></HTML>
+
+pthread_create: Cannot allocate memory
+pthread_create: Cannot allocate memory
+pthread_create: Cannot allocate memory
+pthread_create: Cannot allocate memory
+pthread_create: Cannot allocate memory
+pthread_create: Cannot allocate memory
+pthread_create: Cannot allocate memory
+pthread_create: Cannot allocate memory
+pthread_create: Cannot allocate memory
+```
+- 原因：
+  [pthread_create: cannot allocate memory](https://stackoverflow.com/questions/42442990/pthread-create-cannot-allocate-memory)
+
+  > linux线程中，pthread有两种状态joinable状态和unjoinable状态。
+  >
+  > joinable状态下，当线程函数自己返回退出时或pthread_exit时都不会释放线程所占用堆栈和线程描述符。只有当你调用了pthread_join之后这些资源才会被释放，这是需要main函数或者其他线程去调用pthread_join函数。
+  >
+  >unjoinable状态的线程，这些资源在线程函数退出时或pthread_exit时自动会被释放。
+  >
+  >设置unjoinable状态设置有两种办法 一是可以在pthread_create时指定，二是线程创建后在线程中pthread_detach自己 pthread_detach(pthread_self())，状态改为unjoinable状态，确保资源的释放
+
+- 解决：修改tinyhttp代码，每次调用phread_create后都使用pthread_detach()来回收该线程资源
+> 
+
+
 
 ## 参考
 
