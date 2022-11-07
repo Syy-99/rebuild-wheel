@@ -511,14 +511,19 @@ static int bench(void)
         else
             benchcore(proxyhost, proxyport, request);
 
+
         /* write results to pipe */
+        // 子进程获得管道写端的文件指针，准备向父进程写结果
+        // 子进程如果只使用写端的话，可以关闭读端
         f = fdopen(mypipe[1], "w");
         if (f == NULL)
         {
             perror("open pipe for writing failed.");
             return 3;
         }
+
         /* fprintf(stderr,"Child - %d %d\n",speed,failed); */
+        // 每个子进程写入自己的结果
         fprintf(f, "%d %d %d\n", speed, failed, bytes);
         fclose(f);
 
@@ -526,6 +531,7 @@ static int bench(void)
     }
     else
     {
+        // 父进程获得管道读端的结果
         f = fdopen(mypipe[0], "r");
         if (f == NULL)
         {
@@ -533,7 +539,7 @@ static int bench(void)
             return 3;
         }
 
-        setvbuf(f, NULL, _IONBF, 0);
+        setvbuf(f, NULL, _IONBF, 0);    // 设置无缓冲
 
         speed = 0;
         failed = 0;
@@ -547,7 +553,7 @@ static int bench(void)
                 fprintf(stderr, "Some of our childrens died.\n");
                 break;
             }
-
+            // 统计数据
             speed += i;
             failed += j;
             bytes += k;
@@ -557,7 +563,7 @@ static int bench(void)
                 break;
         }
 
-        fclose(f);
+        fclose(f);  
 
         printf("\nSpeed=%d pages/min, %d bytes/sec.\nRequests: %d susceed, %d failed.\n",
                (int)((speed + failed) / (benchtime / 60.0f)),
@@ -619,39 +625,51 @@ nexttry:
             close(s);   // 关闭此次循环创建的套接字
             continue;   // 重新开始while循环
         }
+
+        // 到这里说明HTTP请求报文发送成功
+
+        // HTTP/0.9的特殊处理
+        // 因为http/0.9服务器在断开后自动断开连接，所以需要半关闭
         if (http10 == 0)
-            if (shutdown(s, 1))
+            if (shutdown(s, 1)) // 关闭输出流，但还有输入流
             {
                 failed++;
                 close(s);
                 continue;
             }
-        if (force == 0)
+        
+        if (force == 0) // force=0, 默认等待服务器回复
         {
             /* read all available data from socket */
+            // 读取所有服务器回复的数据
             while (1)
             {
+                // 如果已经压测超时，则不需要读了
                 if (timerexpired)
                     break;
+
                 i = read(s, buf, 1500);
                 /* fprintf(stderr,"%d\n",i); */
-                if (i < 0)
+                if (i < 0)  // 如果读出错
                 {
                     failed++;
                     close(s);
-                    goto nexttry;
+                    goto nexttry;   // 这次失败，则重新发起连接请求
                 }
-                else if (i == 0)
+                else if (i == 0)    // 没有读到任何数据
                     break;
                 else
-                    bytes += i;
+                    bytes += i;     // 记录从服务器读取到的总字节数
             }
         }
+
+        // 到这里，需要关闭套接字
         if (close(s))
         {
             failed++;
             continue;
         }
+        // 套接字正常关闭，记录成功得到服务器响应的子进程数量
         speed++;
     }
 }
