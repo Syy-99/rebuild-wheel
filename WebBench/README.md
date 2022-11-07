@@ -253,10 +253,64 @@ setvbuf(f, NULL, _IONBF, 0);
   size -- 这是缓冲的大小，以字节为单位。
   ```
 
-  
-
 ## 编译实现
+1. 进入文件夹，通过`make`命令编译
 
+   - 提示错误：
+
+     ```sh
+     syy@syyhost:~/WebBench$ make
+     cc -Wall -ggdb -W -O   -c -o webbench.o webbench.c
+     webbench.c:22:10: fatal error: rpc/types.h: No such file or directory
+        22 | #include <rpc/types.h>
+           |          ^~~~~~~~~~~~~
+     compilation terminated.
+     make: *** [<builtin>: webbench.o] Error 1
+     ```
+
+     - 解决：修改成`<sys/type.h>`
+
+     ```sh
+     syy@syyhost:~/WebBench$ make
+     cc -Wall -ggdb -W -O   -c -o webbench.o webbench.c
+     webbench.c: In function ‘alarm_handler’:
+     webbench.c:80:31: warning: unused parameter ‘signal’ [-Wunused-parameter]
+        80 | static void alarm_handler(int signal)
+           |                           ~~~~^~~~~~
+     cc -Wall -ggdb -W -O  -o webbench webbench.o  
+     ctags *.c
+     /bin/sh: 1: ctags: not found
+     make: [Makefile:12: tags] Error 127 (ignored)
+     ```
+
+     - 解决：`sudo apt-get install universal-ctags`安装ctags
+
+       > ctags是vim下方便代码阅读的工具,支持代码内变量、函数等快速定位
+
+2. 执行`sudo make install`安装软件
+
+### 结果
+
+```sh
+syy@syyhost:~/WebBench$ webbench -c 10 -t 30 http://www.baidu.com/
+Webbench - Simple Web Benchmark 1.5
+Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.
+
+Request:
+GET / HTTP/1.0
+User-Agent: WebBench 1.5
+Host: www.baidu.com
+
+
+Runing info: 10 clients, running 30 sec.
+
+Speed=1012 pages/min, 6239838 bytes/sec.
+Requests: 506 susceed, 0 failed.
+```
+
+- 注意：
+  - 网站只能以http开头
+  - 最末尾一定要有斜线
 ## 参考
 
 - [WebBench压力测试工具（详细源码注释+分析）](https://www.cnblogs.com/yinbiao/p/10784450.html)
