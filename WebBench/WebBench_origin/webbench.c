@@ -273,8 +273,8 @@ Args:
 */
 void build_request(const char *url)
 {
-    char tmp[10];
-    int i;
+    char tmp[10];    //存放端口号的中间数组
+    int i;   // 存放url中主机名开始的位置(即去掉http://)
 
     // bzero(host,MAXHOSTNAMELEN);
     // bzero(request,REQUEST_SIZE);
@@ -368,30 +368,41 @@ void build_request(const char *url)
             // 设置端口号
             proxyport = atoi(tmp);
             if (proxyport == 0) // 有:, 但没有指定具体数值
-                proxyport = 80; // 默认端口号80
+                proxyport = 80; // 则使用默认端口号80
         }
-        else
+        else    // 如果没有声明端口
         {
+            //填充主机名到host字符数组，比如www.baidu.com
             strncpy(host, url + i, strcspn(url + i, "/"));
         }
         // printf("Host=%s\n",host);
+        // 将需要读取的文件保存到请求行
+        // 比如url为http://www.baidu.com:80/one/1.jpg, 那最终是GET /one/1.jpg
+        // 感觉写法不规范
         strcat(request + strlen(request), url + i + strcspn(url + i, "/"));
     }
-    else
+    else    // 如果设置了代理服务器
     {
         // printf("ProxyHost=%s\nProxyPort=%d\n",proxyhost,proxyport);
-        strcat(request, url);
+        strcat(request, url);   // 则直接将url填充到报文
     }
 
+    // 填充http协议版本到请求报文的请求行
     if (http10 == 1)
         strcat(request, " HTTP/1.0");
     else if (http10 == 2)
         strcat(request, " HTTP/1.1");
-
+    
+    // 请求行填充结束，加入换行\r\n
     strcat(request, "\r\n");
 
+    // 填写请求报文的请求头
     if (http10 > 0)
         strcat(request, "User-Agent: WebBench " PROGRAM_VERSION "\r\n");
+    
+    // 不存在代理服务器且http协议版本为1.0或1.1，填充Host字段
+    // 当存在代理服务器或者http协议版本为0.9时，不需要填充Host字段
+    // 因为http0.9版本没有Host字段，而代理服务器不需要Host字段
     if (proxyhost == NULL && http10 > 0)
     {
         strcat(request, "Host: ");
@@ -399,11 +410,21 @@ void build_request(const char *url)
         strcat(request, "\r\n");
     }
 
+    /*  
+        pragma是http/1.1之前版本的历史遗留问题，仅作为与http的向后兼容而定义
+        规范定义的唯一形式：Pragma:no-cache
+        若选择强制重新加载，则选择无缓存
+    */
     if (force_reload && proxyhost != NULL)
     {
         strcat(request, "Pragma: no-cache\r\n");
     }
 
+    /*
+        我们的目的是构造请求给网站，不需要传输任何内容，所以不必用长连接
+        http/1.1默认Keep-alive(长连接）
+        所以需要当http版本为http/1.1时要手动设置为 Connection: close
+    */
     if (http10 > 1)
         strcat(request, "Connection: close\r\n");
 
@@ -411,7 +432,7 @@ void build_request(const char *url)
     if (http10 > 0)
         strcat(request, "\r\n");
 
-    printf("\nRequest:\n%s\n", request);
+    printf("\nRequest:\n%s\n", request);    // 显示请求报文信息
 }
 
 /* vraci system rc error kod */
