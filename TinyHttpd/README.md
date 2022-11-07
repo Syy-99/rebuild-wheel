@@ -307,6 +307,7 @@ Requests: 0 susceed, 411626 failed.
         send(client, buf, strlen(buf), 0);
       ```
   2. 不让send发送异常消息给系统: 把send函数的最后一个参数设为:MSG_NOSIGNAL.
+---
 ```sh
 syy@syyhost:~/WebBench$ webbench -c 10 -t 30 http://localhost:4000/
 Webbench - Simple Web Benchmark 1.5
