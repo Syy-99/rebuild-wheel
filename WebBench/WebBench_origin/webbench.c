@@ -49,7 +49,7 @@ int method = METHOD_GET; //请求方式：Get
 int clients = 1;         // 并发数目为1，即只模拟1个客户端
 int force = 0;           // 默认等待服务器响应
 int force_reload = 0;    // 失败时重新请求
-int proxyport = 80;      // 默认访问代理服务器端口80
+int proxyport = 80;      // 默认访问服务器端口80
 char *proxyhost = NULL;  // 默认无代理服务器
 int benchtime = 30;      // 默认压测时间30s
 
@@ -86,8 +86,12 @@ static void benchcore(const char *host, const int port, const char *request);
 static int bench(void);
 static void build_request(const char *url);
 
+/*
+    信号处理函数。如果到达压测时间，则调用该函数
+*/
 static void alarm_handler(int signal)
 {
+    // timerexpired=1会使得代码跳出循环
     timerexpired = 1;
 }
 /*
@@ -245,6 +249,8 @@ int main(int argc, char *argv[])
     printf("\n");
     */
 
+   // 开始测压
+   // 输出相关信息
     printf("Runing info: ");
 
     if (clients == 1)
@@ -260,7 +266,12 @@ int main(int argc, char *argv[])
         printf(", via proxy server %s:%d", proxyhost, proxyport);
     if (force_reload)
         printf(", forcing reload");
-
+    /*
+        换行不能少！库函数是默认行缓冲，子进程会复制整个缓冲区
+        若不换行刷新缓冲区,子进程会把缓冲区的也打出来
+        而换行后缓冲区就刷新了
+        子进程的标准库函数的那块缓冲区就不会有前面这些了
+    */
     printf(".\n");
 
     return bench();
@@ -435,7 +446,9 @@ void build_request(const char *url)
     printf("\nRequest:\n%s\n", request);    // 显示请求报文信息
 }
 
-/* vraci system rc error kod */
+/*
+    创建子进程，进行实际压测工作
+*/
 static int bench(void)
 {
     int i, j, k;
@@ -443,15 +456,18 @@ static int bench(void)
     FILE *f;
 
     /* check avaibility of target server */
+    // 检查目标服务器的可用性，获得发起连接的客户端套接字文件描述符
     i = Socket(proxyhost == NULL ? host : proxyhost, proxyport);
     if (i < 0)
     {
         fprintf(stderr, "\nConnect to server failed. Aborting benchmark.\n");
         return 1;
     }
+    // 尝试连接成功了，关闭连接
     close(i);
 
     /* create pipe */
+    // 创建管道
     if (pipe(mypipe))
     {
         perror("pipe failed.");
@@ -467,27 +483,29 @@ static int bench(void)
     */
 
     /* fork childs */
+    // 创建子进程
     for (i = 0; i < clients; i++)
     {
         pid = fork();
         if (pid <= (pid_t)0)
         {
             /* child process or error*/
-            sleep(1); /* make childs faster */
-            break;
+            sleep(1); // 子进程挂起1毫秒，将cpu时间交给父进程
+            break;  // 跳出循环，确保子进程不会创建子进程
         }
     }
 
-    if (pid < (pid_t)0)
+    if (pid < (pid_t)0) // 如果子进程创建失败
     {
         fprintf(stderr, "problems forking worker no. %d\n", i);
         perror("fork failed.");
         return 3;
     }
 
-    if (pid == (pid_t)0)
+    if (pid == (pid_t)0)    // 如果当前进程是子进程
     {
         /* I am a child */
+        // 根据是否采用代理，发送不同的HTTP请求连接报文
         if (proxyhost == NULL)
             benchcore(host, proxyport, request);
         else
@@ -551,46 +569,55 @@ static int bench(void)
     return i;
 }
 
+/*
+    子进程真正向服务器发送请求报文并以其得到期间相关数据
+*/
 void benchcore(const char *host, const int port, const char *req)
 {
     int rlen;
-    char buf[1500];
+    char buf[1500]; // 记录服务器响应请求返回的数据
     int s, i;
-    struct sigaction sa;
+    struct sigaction sa;    // 信号处理函数定义
 
     /* setup alarm signal handler */
+    // 设置收到alarm信号后的处理函数
     sa.sa_handler = alarm_handler;
     sa.sa_flags = 0;
     if (sigaction(SIGALRM, &sa, NULL))
         exit(3);
 
+    // 设置程序发送alarm信号的时间，即开始计时
     alarm(benchtime); // after benchtime,then exit
 
+    // 得到请求报文的长度
     rlen = strlen(req);
 nexttry:
-    while (1)
+    // 在压测时间内，一直尝试建立连接
+    while (1)   
     {
-        if (timerexpired)
+        if (timerexpired)   // 如果到压测时间
         {
-            if (failed > 0)
+            if (failed > 0)     // 并且这个子进程始终没有成功建立连接
             {
                 /* fprintf(stderr,"Correcting failed by signal\n"); */
-                failed--;
+                failed--;   // 则恢复记录
             }
             return;
         }
-
+        //建立到目的网站的连接，获得客户端连接套接字的文件描述符
         s = Socket(host, port);
         if (s < 0)
         {
-            failed++;
-            continue;
+            failed++;   // 记录当前子进程创建连接失败
+            continue;   // 重新开始while循环
         }
-        if (rlen != write(s, req, rlen))
+
+        // 发送HTTP请求消息
+        if (rlen != write(s, req, rlen))    // 如果请求报文没有发送完整
         {
-            failed++;
-            close(s);
-            continue;
+            failed++;   // 则说明失败
+            close(s);   // 关闭此次循环创建的套接字
+            continue;   // 重新开始while循环
         }
         if (http10 == 0)
             if (shutdown(s, 1))
