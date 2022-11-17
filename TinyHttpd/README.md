@@ -120,8 +120,23 @@ sprintf(buf, "HTTP/1.0 501 Method Not Implemented\r\n");
 int get_line(int sock, char *buf, int size)
 ```
 -  该函数的作用是确保buf中最后以\n结尾，最终buf后两个字符为\n\0
--  个人认为原始是该程序在Unix系统下运行，每行结尾只要\n即可，但是HTTP请求头每行结尾\r\n
+-  个人认为原因是该程序在Unix系统下运行，每行结尾只要\n即可，但是HTTP请求头每行结尾\r\n
 > Q: 感觉没必要，因为HTTP请求每行一定是以\r\n结束，为什么不直接利用`recv()`读取一行呢？
+>
+> A: recv()函数没发设置读取一行，并且C语言不提供内置库函数读取一行
+
+---
+
+```c
+//  httpd.c - accept_request ()
+while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
+    numchars = get_line(client, buf, sizeof(buf));
+```
+
+- Q：为什们需要discard headers？
+  - 我们认为这里实际的作用应该是消除保存在套接字输入缓冲中的HTTP的请求报文缓存，避免下次读取到上次无效的内容
+
+---
 
 ```c
 //  httpd.c - accept_request ()
