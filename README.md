@@ -19,7 +19,10 @@
     - 时间：
         ```
         2022.11.2 - 11.3 完成代码阅读
+         2022.11.9 - 11.17 完成代码编写
         ```
+        
+        > 真心推荐: 即使看完了代码也需要自己敲一遍，即使就是按照原始思路编写，也会有更深的体会
     - 环境:
         ```sh
         syy@syyhost:~/WebBench$ cat /proc/version
@@ -42,11 +45,9 @@
 - MIT操作系统实验
 
 ## 计划的项目
-1. WebBench(网站压测工具) 
 2. TinyWebServer(Web服务器，很多人用)
 3. json-tutorial
 4. MyTinySTL
 5. sylar（服务器框架）
-6. MIT操作系统实验
 7. CSAPP实验
 
