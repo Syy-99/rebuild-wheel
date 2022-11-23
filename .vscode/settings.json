@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "crtdefs.h": "c",
-        "*.tcc": "c"
+        "*.tcc": "c",
+        "limits": "c"
     }
 }

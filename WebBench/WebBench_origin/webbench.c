@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
         {
         case 0:
             break; // opt=0的情况，实际在long_options已经更改了默认设置
-        case 'f':
+        case 'f':   
             force = 1;
             break;
         case 'r':
@@ -295,7 +295,7 @@ void build_request(const char *url)
 
      //判断应该使用的http协议(这部分更多是HTTP的知识)
     // 感觉没有必要了，现在基本都是1.1
-    //1.缓存和代理都是都是http/1.0以后才有到的
+    //1.reload和代理都是都是http/1.0以后才有到的
     if (force_reload && proxyhost != NULL && http10 < 1)
         http10 = 1;
     //2.head请求是http/1.0后才有的
@@ -629,7 +629,7 @@ nexttry:
         // 到这里说明HTTP请求报文发送成功
 
         // HTTP/0.9的特殊处理
-        // 因为http/0.9服务器在断开后自动断开连接，所以需要半关闭
+        // 因为http/0.9服务器在连接后自动断开连接，所以需要半关闭
         if (http10 == 0)
             if (shutdown(s, 1)) // 关闭输出流，但还有输入流
             {

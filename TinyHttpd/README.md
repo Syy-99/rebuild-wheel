@@ -42,7 +42,7 @@ if((setsockopt(serv_sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on))) < 0)
 ```
 - 为什们要取消Time-wait?
   - 首先，要了解Time-wait,主要影响是当服务器端主动断开连接后，由于TCP的特性，导致关闭的服务器套接字不能立刻被使用
-  - 通常，一旦服务器向客户端发送了响应信息，那么就会关闭TCPL连接。但是，默认HTTP/1.0协议会设置`connection:keep-Acliev`, 那么 TCP 连接在服务器返回信息后，仍然保持打开状态，也就是只有当客户端主动关闭页面时（针对Web服务器）才会断开连接。在这种场景下，始终有客户端主动断开，所以就不需要time-wait了.
+  - 通常，一旦服务器向客户端发送了响应信息，那么就会关闭TCPL连接。但是，默认HTTP/1.1协议会设置`connection:keep-Acliev`, 那么 TCP 连接在服务器返回信息后，仍然保持打开状态，也就是只有当客户端主动关闭页面时（针对Web服务器）才会断开连接。在这种场景下，始终有客户端主动断开，所以就不需要time-wait了.
 ---
 ```c
 // httpd.c - startup()

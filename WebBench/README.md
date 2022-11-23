@@ -29,7 +29,7 @@ while((opt=getopt_long(argc,argv,"912Vfrt:p:c:?h",long_options,&options_index))!
   int getopt_long(int argc, char * const argv[],const char *optstring,const struct option *longopts,
                   int *longindex);
   /*
-  每次返回一个选项。如果遇到非法选项返回-1，其他情况根据参数返回具体值
+  遇到短选项，则返回该选项; 长选项则根据参数返回设置的值或0；遇到非法选项返回-1
   参数：
   argc: 命令行参数的个数(包括命令本身)
   argv：记录命令行参数的具体内容
@@ -37,34 +37,50 @@ while((opt=getopt_long(argc,argv,"912Vfrt:p:c:?h",long_options,&options_index))!
   longopts：用于规定合法长选项,可以是数组类型
   longindex: 表示长选项在longopts中的位置(该项主要用于调试, 一般设为 NULL 即可)
   */
+  extern char *optarg;
+  extern int optind, opterr, optopt;
   ```
 
   - 长选项：以`--`开头的选项
 
   - `argc` 和 `argv` 一般使用main()传递进来的值
 
-  - `optstring`: 一般为合法选项字母构成的字符串，如果字母后面带上冒号`:`就说明该选项**必须**有参数
+  - `optstring`: 一般为合法选项字母构成的字符串，
 
+    - 字母后面1个冒号`:`，表示选项**必须**有参数，参数和选项直接用空格分开
+  
+      字面后2个冒号，表示参数可有可无，但如果带参数不能有空格
+  
   - `option`:
-
+  
     ```c
     struct option {
         const char *name;		// 长选项名称
-        int has_arg;	// 参数情况（0:无参数；1:有参数；2: 参数可选）
-        int *flag;	// 指定长选项如何返回结果.如果flag为NULL, getopt_long() 会返回val. 如果flag不为NULL, getopt_long会返回0, 并且将val的值存储到flag中
-        int val;	// 将要被getopt_long返回或者存储到flag指向的变量中的值
+        int has_arg;	// 参数情况（0:不带参数；1:必须带参数；2: 参数可选）
+        int *flag;	// 指定长选项如何返回结果.如果flag为NULL, getopt_long() 会返回val；否则, getopt_long会返回0, 并且flag指向val
+        int val;	// 将要被getopt_long返回或者flag指针绑定的变量
     };
     ```
-
+  
     - hat_arg一般使用符号常量而不是数值
-
+  
       ```
       no_argument; required_argument; optional_argument;
       ```
-    
-    [命令行参数处理:getopt()和getopt_long()](https://www.jianshu.com/p/80cdbf718916)
-    
-    [【C】解析命令行参数--getopt和getopt_long](http://blog.zhangjikai.com/2016/03/05/%E3%80%90C%E3%80%91%E8%A7%A3%E6%9E%90%E5%91%BD%E4%BB%A4%E8%A1%8C%E5%8F%82%E6%95%B0--getopt%E5%92%8Cgetopt_long/)
+      
+    - **longopts的最后一个元素必须是全0填充，否则会报段错误**
+  
+      ```c
+      {NULL, 0, NULL, 0}
+      ```
+  
+  - optarg: 指向当前选项参数（如果有）的指针;
+  
+    optind: 再次调用 getopt() 时的下一个 argv 指针的索引
+  
+    optopt：最后一个未知选项
+  
+  [linux的命令行解析参数之getopt_long函数](https://www.jianshu.com/p/ae4ae0ef57bc)
 
 ---
 
@@ -167,6 +183,7 @@ strcat(request + strlen(request), url + i + strcspn(url + i, "/"));
 - 感觉这行代码有问题：
   - `char *strcat(char *dest,const char *src);`:把src所指字符串添加到dest结尾处(覆盖dest结尾处的'\0')并添加'\0'。
   - 那么完全没有必要使用request + strlen(request)吧
+  - 而且这个代码即用`strlen`计算request的长度，又在向request中添加字符，可能出现未定义的行为
 
 ---
 
