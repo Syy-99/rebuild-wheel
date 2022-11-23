@@ -269,9 +269,9 @@ putenv(meth_env);
 5. 在当前文件夹下运行`make`命令
 ### 结果
 
-![image-20221103105905969](my_res/image-20221103105905969.png)
+![image-20221103105905969](res_my/image-20221103105905969.png)
 
-![image-20221103105923475](my_res/image-20221103105923475.png)
+![image-20221103105923475](res_my/image-20221103105923475.png)
 
 ## 拓展：使用Webbench对Tinyhttpd进行测压
 ```sh
