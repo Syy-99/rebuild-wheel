@@ -1,6 +1,6 @@
 #include "minicrt.h"
 
-extern int main(int argc, int argv);
+extern int main(int argc, char** argv);
 void exit(int);
 
 static void crt_fatal_error(const char *msg) {
@@ -42,6 +42,6 @@ void exit (int exit_code) {
 	asm ("movl %0, %%ebx \n\t"
 			 "movl $1, %%eax \n\t"
 			 "int $0x80 \n\t"
-		 	 "hlt \n\t" ::"m"(exitcode)
+		 	 "hlt \n\t" ::"m"(exit_code)
 			);
 }

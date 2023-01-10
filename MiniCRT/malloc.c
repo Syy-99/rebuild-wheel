@@ -1,4 +1,4 @@
-#include "miincrt.h"
+#include "minicrt.h"
 
 // 每个块的头部结构: 记录块大小，块状态，双向指针
 typedef struct _heap_header_ {
@@ -11,7 +11,7 @@ typedef struct _heap_header_ {
 	struct _heap_header_ *pre;	// 双向链表
 }heap_header;
 
-#define ADDR_ADD(a, o) (((*char*)(a)) + o)
+#define ADDR_ADD(a, o) (((char*)(a)) + o)
 #define HEADER_SIZE (sizeof(heap_header))
 
 static heap_header *list_head = NULL; // 链表管理块
@@ -23,8 +23,8 @@ void *malloc(unsigned size) {
 	heap_header *header = list_head;
 	while (header != NULL) {
 		// 找空闲堆块
-		if (header -> type = HEAP_BLOCK_USED) {
-			header = header -> next
+		if (header -> type == HEAP_BLOCK_USED) {
+			header = header -> next;
 			continue;
 		}
 
@@ -60,7 +60,7 @@ void free(void *ptr) {
 	if (header -> type != HEAP_BLOCK_USED)
 		return;
 	
-	header -> type == HEAP_BLOCK_FREE;
+	header -> type = HEAP_BLOCK_FREE;
 	
 	// 碎片合并
 	// 尝试和前一个堆块合并
@@ -68,7 +68,7 @@ void free(void *ptr) {
 		header -> pre -> next = header -> next;
 		if (header -> next != NULL)
 			header -> next -> pre = header -> pre;
-		header -> prev -> size += header -> size;
+		header -> pre -> size += header -> size;
 	
 		header = header -> pre;
 	}
@@ -82,7 +82,7 @@ void free(void *ptr) {
 
 // 通过调整数据段的位置来获得堆空间
 // 这里为了简化，将堆空间固定32MB
-static int brk(void *end_data_segemet) {
+static int brk(void *end_data_segement) {
 	int ret = 0;
 	
 	asm ("movl $45, %%eax \n\t"		// brk系统调用号45
