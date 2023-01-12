@@ -1,7 +1,7 @@
 #ifndef __MINI_CRT_H__
 #define __MINI_CRT_H__
 
-#ifdef __cplusplus
+#ifdef __cplusplus  // gcc编译器会根据编译的类型自动判断是否定义该宏
 extern "C" {
 #endif
 
@@ -22,6 +22,7 @@ char* strcpy(char* dest, const char* src);
 unsigned strlen(const char* str);
 
 // 文件与IO	
+// 注意，这里FILE实际上就是文件描述符
 typedef int FILE;
 
 #define EOF	(-1)
@@ -42,6 +43,7 @@ int fputs(const char* str,FILE *stream);
 int printf(const char *format,...);
 int fprintf(FILE* stream,const char *format,...);
 
+// 下面的函数是针对C++程序的全局构造和全局析构
 //internal 
 void do_global_ctors();
 void mini_crt_call_exit_routine();

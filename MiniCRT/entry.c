@@ -4,7 +4,7 @@ extern int main(int argc, char** argv);
 void exit(int);
 
 static void crt_fatal_error(const char *msg) {
-	// printf("fatal error: %s", msg);
+	printf("fatal error: %s", msg);
 	exit(1);
 }
 
@@ -28,7 +28,9 @@ void mini_crt_entry() {
 	// io初始化
 	if (!mini_crt_io_init())
 		crt_fatal_error("io initialize failed");
-
+#ifdef __cplusplus
+	do_global_ctors();
+#endif
 	// 调用main
 	int ret = main(argc, argv);
 
@@ -38,7 +40,9 @@ void mini_crt_entry() {
 }
 
 void exit (int exit_code) {
-	// mini_crt_call_exit_routine();
+#ifdef __cplusplus
+	mini_crt_call_exit_routine();
+#endif
 	asm ("movl %0, %%ebx \n\t"
 			 "movl $1, %%eax \n\t"
 			 "int $0x80 \n\t"

@@ -1,20 +1,23 @@
 #include "minicrt.h"
 
+// 利用空闲链表实现堆的管理
+// 堆大小固定32MB
+
 // 每个块的头部结构: 记录块大小，块状态，双向指针
 typedef struct _heap_header_ {
 	enum {
-		HEAP_BLOCK_FREE = 0xABABABAB,
-		HEAP_BLOCK_USED = 0xCDCDCDCD,
+		HEAP_BLOCK_FREE = 0xABABABAB,   // 空闲块魔数
+		HEAP_BLOCK_USED = 0xCDCDCDCD,		// 占用块魔数
 	}type;			// 记录这块是否被使用	
 	unsigned size;		// block size(include header)
 	struct _heap_header_ *next;
 	struct _heap_header_ *pre;	// 双向链表
 }heap_header;
 
-#define ADDR_ADD(a, o) (((char*)(a)) + o)
-#define HEADER_SIZE (sizeof(heap_header))
+#define ADDR_ADD(a, o) (((char*)(a)) + o)		// 地址a移动o个字节
+#define HEADER_SIZE (sizeof(heap_header))		// 计算链表头部大小
 
-static heap_header *list_head = NULL; // 链表管理块
+static heap_header *list_head = NULL; // 链表头指针 
 
 void *malloc(unsigned size) {
 	if (size == 0)
