@@ -53,6 +53,8 @@
 		root@iZwz96ih3nchpyijnebdfiZ:~/MiniCRT# uname -a
 		Linux iZwz96ih3nchpyijnebdfiZ 4.4.0-117-generic #141-Ubuntu SMP Tue Mar 13 12:01:47 UTC 2018 i686 i686 i686 GNU/Linux
 		```
+	- 学习建议：
+		阅读《程序员的自我修养》（强烈推荐）
 ## 正在进行的项目
 - MIT操作系统实验
 
