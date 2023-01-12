@@ -1,4 +1,4 @@
-#include "minicrt"
+#include "minicrt.h"
 
 int fputc(int c, FILE *stream) {
 	if (fwrite(&c,1,1,stream) != 1)
@@ -16,9 +16,9 @@ int fputs(const char *str, FILE *stream) {
 }
 
 // 处理c语言可变参数
-typedef char* va_list 
+typedef char* va_list;
 #define va_start(ap,arg) (ap=(va_list)&arg + sizeof(arg))
-#define va_arg(ap,type) (*(t*)((ap +=sizeof(t)) - sizeof(t)))
+#define va_arg(ap,type) (*(type*)((ap +=sizeof(type)) - sizeof(type)))
 #define va_end(ap) (ap=(va_list)0)
 
 // arg1: 输出的文件
@@ -38,7 +38,7 @@ int vfprintf(FILE *stream, const char *format, va_list arglist) {
 					if (fputc('%', stream) < 0)
 							return EOF;
 					++ret;
-					translating = 0
+					translating = 0;
 				}
 				break;
 			case 'd':  // 遇到d，需要判断是实际要输出的字符，还是格式控制字符
@@ -52,7 +52,7 @@ int vfprintf(FILE *stream, const char *format, va_list arglist) {
 					ret += strlen(buf);
 				} else {
 					if (fputc('d', stream) < 0 )
-						return EOF:
+						return EOF;
 					ret++;
 				}
 
@@ -68,7 +68,7 @@ int vfprintf(FILE *stream, const char *format, va_list arglist) {
 				} else {
 					if (fputc('s', stream) < 0)
 						return EOF;
-					ret++
+					ret++;
 				}
 				break;
 			default:

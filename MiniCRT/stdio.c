@@ -12,7 +12,7 @@ static int open(const char *pathname, int flags, int mode) {
 			"movl %2, %%ecx \n\t"
 			"movl %3, %%edx \n\t"
 			"int $0x80 \n\t"
-			"movl %%eax, %0 " : "=m"(df) : "m"(pathname), "m"(flags), "m"(mode)
+			"movl %%eax, %0 " : "=m"(fd) : "m"(pathname), "m"(flags), "m"(mode)
 			);
 	return fd;
 }	
@@ -79,12 +79,12 @@ FILE *fopen(const char *filename , const char *mode) {
 		flags |= O_WRONLY | O_CREAT | O_TRUNC;	// 只读；创建；清除
 	if (strcmp(mode, "w+") == 0)
 		flags |= O_RDWR | O_CREAT | O_TRUNC;
-	if (strcmp(mode "r") == 0)
+	if (strcmp(mode,"r") == 0)
 		flags |= O_RDONLY;
-	if (strcmp(mode "r+") == 0)
+	if (strcmp(mode,"r+") == 0)
 		flags |= O_RDWR | O_CREAT;
 
-	fd = open(filename, flags, mode);
+	fd = open(filename, flags, access);
 	return (FILE*)fd;	//??? 这里的转换不会报错吗？ int -> int *
 }
 
