@@ -42,7 +42,20 @@
         ```
     - 环境：和TinyHttpd相同
     - 学习建议：Linux网络编程 + HTTP相关知识
-
+3. MiniCRT: Linux32位系统下的C运行时库
+	- 时间：
+		```
+		2023.1.5 - 1.11 完成代码编写，成功运行测试程序
+		```
+	- 环境：32位系统
+		```sh
+		root@iZwz96ih3nchpyijnebdfiZ:~/MiniCRT# cat /proc/version
+		Linux version 4.4.0-117-generic (buildd@lgw01-amd64-057) (gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.9) ) #141-Ubuntu SMP Tue Mar 13 12:01:47 UTC 2018
+		root@iZwz96ih3nchpyijnebdfiZ:~/MiniCRT# uname -a
+		Linux iZwz96ih3nchpyijnebdfiZ 4.4.0-117-generic #141-Ubuntu SMP Tue Mar 13 12:01:47 UTC 2018 i686 i686 i686 GNU/Linux
+		```
+	- 学习建议：
+		阅读《程序员的自我修养》（强烈推荐）
 ## 正在进行的项目
 - MIT操作系统实验
 
