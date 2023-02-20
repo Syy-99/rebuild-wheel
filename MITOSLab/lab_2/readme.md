@@ -165,7 +165,7 @@ Q1：用户程序中，调用`trace()`函数，那怎么就直接执行`usr/usys
 
 3. 具体`sys_sysinfo()`函数实现:
 
-    -    needs to copy a struct sysinfo back to user space。
+    -  needs to copy a struct sysinfo back to user space。
         
         > 因为我们首先是在系统调用中构造sysinfo结构并填写数据，但是我们调用`sysinfo()`是在用户空间，传递的sysinfo结构也是在用户空间，因此需要执行内核空间内存数据拷贝到用户空间映射的内存
 
@@ -173,7 +173,7 @@ Q1：用户程序中，调用`trace()`函数，那怎么就直接执行`usr/usys
 
             ```C
             // filestat()
-            // 将内核数据结构stat映射到进程的虚拟地址的用户空间中
+            // 将内核数据结构stat映射到进程的虚拟地址的用户空间addr中
             if(copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0)
                 return -1;
 
@@ -204,7 +204,7 @@ Q1：用户程序中，调用`trace()`函数，那怎么就直接执行`usr/usys
                 }
                 return 0;
             }
-        ```
+            ```
 
     - To collect the amount of free memory, add a function to `kernel/kalloc.c`
 
