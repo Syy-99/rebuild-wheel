@@ -347,3 +347,238 @@ $
 test bigdir: OK
 ALL TESTS PASSED
 ```
+
+## Simpley `copyin/copyinstr`
+
+- 在每个进程的内核页表中，增加用户空间映射，使得`copyin()`可以直接从用户指针获得物理内存;
+
+    实际上是在内核页表中增加相应用户空间的映射，PTE
+
+- 注意：
+    
+    - After the kernel has booted, that address is 0xC000000 in xv6, the address of the PLIC registers;
+
+    - 必须确保用户空空间增加不能超过这部分
+
+### 实验步骤
+
+1. 查看`copyin()`(kernel/vm.c)和`copyin_new()`(kernel/vmcopyin.c)的区别:
+
+    ```c
+
+    int
+    copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
+    {
+        uint64 n, va0, pa0;
+
+        while(len > 0){
+            va0 = PGROUNDDOWN(srcva);
+            pa0 = walkaddr(pagetable, va0);     // 利用用户页表，获得srcva对应的物理内存
+            if(pa0 == 0)
+            return -1;
+            n = PGSIZE - (srcva - va0);
+            if(n > len)
+            n = len;
+            memmove(dst, (void *)(pa0 + (srcva - va0)), n);     // 然后两个物理内存直接进行拷贝
+
+            len -= n;
+            dst += n;
+            srcva = va0 + PGSIZE;
+        }
+        return 0;
+    }
+
+    int
+    copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
+    {
+        struct proc *p = myproc();
+
+        if (srcva >= p->sz || srcva+len >= p->sz || srcva+len < srcva)  // srcva+len < srcva: 检测srcva+len是否溢出
+            return -1;
+        memmove((void *) dst, (void *)srcva, len);      // 直接通过MMU完成虚拟地址到物理地址的转换
+        stats.ncopyin++;   // XXX lock
+        return 0;
+    }
+
+    ```
+
+2. 替换`copyin(),copyinstr()`的函数实现
+
+    ```c
+    int copyin_new(pagetable_t, char *, uint64, uint64);		// 声明外部函数
+    int copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
+    {
+        return copyin_new(pagetable, dst, srcva, len);
+    }
+
+    int copyinstr_new(pagetable_t, char *, uint64, uint64);
+    int copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
+    {
+        return copyinstr_new(pagetable, dst, srcva, max);
+    }
+    ```
+
+3. 修改相关代码，一旦进程虚拟地址空间发生变化(即用户页表映射发生变化)，需要将这些变化同步到该进程的内核页表中；
+
+
+    - 提取功能： 将用户页表拷贝到内核页表
+
+        ```c
+        // 将 src 页表中start开始的sz大小的映射关系拷贝到 dst 页表中。
+        // 参考uvmcop, 但是只拷贝页表项，不拷贝实际的物理页内存
+        // 成功返回0，失败返回 -1
+        int
+        kvmcopymappings(pagetable_t src, pagetable_t dst, uint64 start, uint64 sz) {
+            pte_t *pte;
+            uint64 pa, i;
+            uint flags;
+
+            // PGROUNDUP: prevent re-mapping already mapped pages (eg. when doing growproc)
+            for(i = PGROUNDUP(start); i < start + sz; i += PGSIZE){
+                if((pte = walk(src, i, 0)) == 0)
+                panic("kvmcopymappings: pte should exist");
+                if((*pte & PTE_V) == 0)
+                panic("kvmcopymappings: page not present");
+                pa = PTE2PA(*pte);
+
+                flags = PTE_FLAGS(*pte);
+                // 必须设置该权限，RISC-V 中内核是无法直接访问用户页的。
+                flags = PTE_FLAGS(*pte) & ~PTE_U;
+                if(mappages(dst, i, PGSIZE, (uint64)pa, flags) != 0){  // 这个映射没有改变物理地址
+                goto err;
+                }
+            }
+            return 0;
+
+            err:
+            uvmunmap(dst, PGROUNDUP(start), (i - PGROUNDUP(start)) / PGSIZE, 0);   // 0： 不用操作物理内存
+            return -1;
+        }
+        ```
+
+            - 需要注意 CLINT（核心本地中断器）的映射，我们发现，在`kvminit()`中，就已经进行了该部分的映射
+
+                ```c
+                kvmmap(kernel_pagetable, CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+                ```
+            - 当时，CLINT实际上是在PLIC之下，因此在进行用户页表拷贝操作时，会检测到PTE重复映射
+
+                ```c
+                // mappages()
+                if(*pte & PTE_V)    // 判断该页表项是否已经被使用，即被别的va映射
+                    panic("remap");
+                ```
+            - 因此，需要建议修改`kvminit()`, 即每个进程的内核页表中，不映射这部分，但是内核共享的页表仍然映射这部分，以继续兼容
+
+    - 修改`fork()`, 它会创建一个新进程，需要将该新进程的用户页表执行拷贝操作
+
+        ```c
+        //...
+        // Copy user memory from parent to child, 将用户页表所有映射拷贝
+        if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0 || kvmcopymappings(np->pagetable,np->kernel_pagetable,0 ,p->sz) < 0){
+            
+            freeproc(np);
+            release(&np->lock);
+            return -1;
+        }
+        ```
+    
+    - 修改`exec()`, 它会替换进程虚拟地址空间，在替换之后会将原用户页表释放替换为新的用户页表, 因此需要同样更新进程的内核页表.
+
+        ```c
+        //...
+        if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+            goto bad;
+        if (sz1 >= PLIC)        // 1. Don't forget about the above-mentioned PLIC limit, 用户虚拟地址空间不能超过PLIC
+            goto bad;
+        //....
+        // 2. 清除内核页表中对程序内存的旧映射，然后重新建立映射。
+        uvmunmap(p->kernel_pagetable, 0, PGROUNDUP(oldsz)/PGSIZE, 0);
+        kvmcopymappings(pagetable, p->kernel_pagetable, 0, sz);
+
+        if(p->pid==1) 
+            vmprint(p->pagetable);
+        ```
+
+    - 修改`sbrk()`, sbrk() 函数即系统调用 sys_brk() 函数, 最终会调用 kernel/proc.c 中的 `growproc()` 函数, 用来增长或减少虚拟内存空间, 因此也会添加或减少映射
+
+        ```c
+        int
+        growproc(int n)
+        {
+            uint sz;
+            struct proc *p = myproc();
+
+            sz = p->sz;
+            if(n > 0){
+                // 1. 不能超过PLIC
+                if (sz + n > PLIC)
+                return -1;
+                uint64 newsz;
+                
+                if((newsz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+                return -1;
+                }
+                // 2. 只有复制添加部分的映射
+                if (kvmcopymappings(p->pagetable, p->kernel_pagetable, sz, n) < 0)
+                return -1;
+                sz = newsz;
+            } else if(n < 0){
+                sz = uvmdealloc(p->pagetable, sz, sz + n);
+                uvmunmap(p->kernel_pagetable, PGROUNDUP(sz), (PGROUNDUP(p->sz) - PGROUNDUP(sz)) / PGSIZE, 0);    // 内核页表相应的映射也要取消
+            }
+            p->sz = sz;
+            return 0;
+        }
+        ```
+
+4. 修改`userinit()`, 对于 init 进程，由于不像其他进程，init 不是 fork 得来的，所以需要在 userinit 中也添加同步映射的代码。
+    
+    ```c
+    uvminit(p->pagetable, initcode, sizeof(initcode));
+    p->sz = PGSIZE;
+
+    kvmcopymappings(p->pagetable, p->kernel_pagetable, 0, p->sz);
+    ```
+
+### 实验结果
+
+```sh
+== Test pte printout == 
+$ make qemu-gdb
+pte printout: OK (4.4s) 
+== Test answers-pgtbl.txt == answers-pgtbl.txt: FAIL 
+    Cannot read answers-pgtbl.txt
+== Test count copyin == 
+$ make qemu-gdb
+count copyin: OK (0.6s) 
+    (Old xv6.out.count failure log removed)
+== Test usertests == 
+$ make qemu-gdb
+(120.5s) 
+== Test   usertests: copyin == 
+  usertests: copyin: OK 
+== Test   usertests: copyinstr1 == 
+  usertests: copyinstr1: OK 
+== Test   usertests: copyinstr2 == 
+  usertests: copyinstr2: OK 
+== Test   usertests: copyinstr3 == 
+  usertests: copyinstr3: OK 
+== Test   usertests: sbrkmuch == 
+  usertests: sbrkmuch: OK 
+== Test   usertests: all tests == 
+  usertests: all tests: OK 
+== Test time == 
+time: FAIL 
+    Cannot read time.txt
+Score: 60/66
+```
+
+### 拓展
+Q: 为什们内核代码不能访问用户空间数据？
+
+- 无法确定该用户空间的虚拟地址是否映射一个物理内存
+
+[内核代码不可直接访问用户空间数据](https://blog.csdn.net/skyflying2012/article/details/7866488)
+
+[Linux是怎么做到禁止内核直接访问用户空间的？](https://www.zhihu.com/question/387751336)
