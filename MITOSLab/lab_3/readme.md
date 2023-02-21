@@ -356,7 +356,7 @@ ALL TESTS PASSED
 
 - 注意：
     
-    - After the kernel has booted, that address is 0xC000000 in xv6, the address of the PLIC registers;
+    - However, this scheme does limit the maximum size of a user process to be less than the kernel's lowest virtual address. After the kernel has booted, that address is 0xC000000 in xv6, the address of the PLIC registers;
 
     - 必须确保用户空空间增加不能超过这部分
 
