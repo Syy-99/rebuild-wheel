@@ -84,6 +84,27 @@ init: starting sh
 $ 
 ```
 
+Q: Q: Explain the output of vmprint in terms of Fig 3-4 from the text. What does page 0 contain? What is in page 2? When running in user mode, could the process read/write the memory mapped by page 1?
+
+- 根据`exec()`可见，page0应该是代码段+数据段,page2对应用户栈, page1那就应该是guard page(无物理地址实际映射)
+
+    ```c
+    if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+      goto bad;
+
+    // Allocate two pages at the next page boundary.
+    // Use the second as the user stack.
+    sz = PGROUNDUP(sz);
+    uint64 sz1;
+    if((sz1 = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
+        goto bad;
+    sz = sz1;
+    uvmclear(pagetable, sz-2*PGSIZE);
+    sp = sz;
+    stackbase = sp - PGSIZE;
+    ```
+
+
 ## A kernel page table per process 
 > - 无论何时在内核执行时，xv6使用同一个内核页表。内核页表是一个物理地址的直接映射，因此内核虚拟地址x对应物理地址x。
 > - xv6也有一个单独的页表给每个进程的用户地址空间，**仅包含那个进程用户内存的映射**，起始于虚拟地址0。
@@ -573,6 +594,10 @@ time: FAIL
     Cannot read time.txt
 Score: 60/66
 ```
+
+Q:  Explain why the third test `srcva + len < srcva` is necessary in copyin_new(): give values for srcva and len for which the first two test fail (i.e., they will not cause to return -1) but for which the third one is true (resulting in returning -1).
+
+- 在代码注释有提到，这个判断条件是为了防止溢出
 
 ### 拓展
 Q: 为什们内核代码不能访问用户空间数据？
