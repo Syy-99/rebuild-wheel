@@ -1,3 +1,5 @@
+# page tables
+
 ## Print a page table
 
 - 写一个函数`vmprint()`,接收一个`pagetable_t`参数，根据指定格式打印该页表的内容
@@ -19,18 +21,21 @@
             // 每级页表都有2^9=512个页表项
             for(int i = 0; i < 512; i++){
                 pte_t pte = pagetable[i];
-                if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){  // 只有最后一级页表设置(PTE_R|PTE_W|PTE_X)
+                if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){  
                     // 这个页表项指向下一级别的页表项
                     uint64 child = PTE2PA(pte);
                     freewalk((pagetable_t)child);
                     pagetable[i] = 0;
                 } else if(pte & PTE_V){    
-                    panic("freewalk: leaf");    // 重点：PTE_V 为 1，说明最后一级页表的页表项映射没取消（取消应该是全0)，会 panic
+                    panic("freewalk: leaf");    
+
                 }
             }
             kfree((void*)pagetable);      // 释放该页表
         }
         ```
+
+        > 这里有一个问题: 按照if条件，当pte & PTE_V = 0， 即pte无效时，为什们还说该页表项指向下级页表呢？
     
     - 编写`vmprint()`
 

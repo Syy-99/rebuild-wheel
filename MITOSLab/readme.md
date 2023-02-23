@@ -2,6 +2,12 @@
 - 课程网站：https://pdos.csail.mit.edu/6.828/2020/schedule.html
 
 - 课程教材的中文翻译：https://www.zhihu.com/people/iguodala-62/posts
+
+- 参考实验流程：
+
+   - https://blog.csdn.net/lostunravel/category_11476165.html
+
+   - https://blog.miigon.net/categories/mit6-s081/ 
 ## 环境搭建
 VMware + Ubuntu-22.04.01服务器版 + VScode远程连接虚拟机
 

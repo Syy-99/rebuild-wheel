@@ -1,3 +1,5 @@
+# traps
+
 ## RISC-V assembly
 
 - 通过回答一些问题，理解RISV的汇编知识
@@ -215,7 +217,7 @@ riscv64-linux-gnu-objdump -t kernel/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; 
 
             *p->alarm_trapframe = *p->trapframe;    // 保存一下
             p->trapframe->epc = (uint64)p->alarm_handler;   // 设置trap的返回地址是alarm_handler函数
-            p->is_alarm = 1;    // 记录此时是在alarm下运行
+            p->is_alarm = 1;    // 记录此时是在alarm下运行,在alarm_handler中必须调用sigreturn()将它恢复为0
             }
         }
         }
