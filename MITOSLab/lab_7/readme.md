@@ -21,7 +21,7 @@
 
 完善`uthread.c`中的函数 
 
-    - `thread_schedule()` 参考内核函数`scheduler)`,调用上下文切换函数即可 
+    - `thread_schedule()` 参考内核函数`scheduler()`,调用上下文切换函数即可 
     
     - `thread_create(void (*func)())`: 传递一个函数指针，指明该线程中运行的程序
 
