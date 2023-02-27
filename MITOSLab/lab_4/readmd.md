@@ -154,7 +154,7 @@ riscv64-linux-gnu-objdump -t kernel/kernel | sed '1,/SYMBOL TABLE/d; s/ .* / /; 
     // kernel/proc.c -> allocproc() & freeproc()
     if(p->alarm_trapframe)
         kfree((void*)p->alarm_trapframe);
-    p->alarm_trapframe = 0;
+    p-> alarm_trapframe = 0;
     p -> alarm_interval = 0;
     p -> alarm_ticks = 0;
     p -> alarm_handler = 0;
