@@ -111,6 +111,7 @@ Q: Q: Explain the output of vmprint in terms of Fig 3-4 from the text. What does
 
 
 ## A kernel page table per process 
+
 > - 无论何时在内核执行时，xv6使用同一个内核页表。内核页表是一个物理地址的直接映射，因此内核虚拟地址x对应物理地址x。
 > - xv6也有一个单独的页表给每个进程的用户地址空间，**仅包含那个进程用户内存的映射**，起始于虚拟地址0。
 > - 因为内核页表不包含这些映射，用户地址在内核无效。
