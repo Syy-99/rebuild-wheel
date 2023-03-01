@@ -148,6 +148,41 @@ ALL TESTS PASSED
 
     - 这部分的实现细节，可以**参考[第一个链接](https://blog.miigon.net/posts/s081-lab8-locks)**，有更深入的分析
 
+### 实验结果
+
+```sh
+$ bcachetest
+start test0
+test0 results:
+--- lock kmem/bcache stats
+lock: kmem: #fetch-and-add 0 #acquire() 33033
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 6392
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 6672
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 6686
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 7002
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 6268
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 4202
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 4202
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 2194
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 4212
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 2196
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 4360
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 4398
+lock: bcache_bufmap: #fetch-and-add 0 #acquire() 6408
+--- top 5 contended locks:
+lock: virtio_disk: #fetch-and-add 7044078 #acquire() 1101
+lock: proc: #fetch-and-add 626031 #acquire() 92095
+lock: proc: #fetch-and-add 555696 #acquire() 92095
+lock: proc: #fetch-and-add 518981 #acquire() 92095
+lock: proc: #fetch-and-add 415970 #acquire() 92095
+tot= 0
+test0: OK
+start test1
+test1 OK
+```
+
+- 这部分要多运行几次，才能确保大概率正确
+
 ### 实验拓展
 
 Q: 锁竞争优化一般有几个思路：
