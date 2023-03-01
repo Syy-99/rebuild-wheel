@@ -146,7 +146,7 @@ ALL TESTS PASSED
         >
         > - Searching in the hash table for a buffer and allocating an entry for that buffer when the buffer is not found must be atomic.
 
-    - 这部分的实现细节，可以**参考[第一个链接](https://blog.miigon.net/posts/s081-lab8-locks)**，有更深入的分析
+    - 这部分的实现细节，可以**参考[第一个链接](https://blog.miigon.net/posts/s081-lab8-locks)**，有深入的分析
 
 ### 实验结果
 
@@ -182,6 +182,35 @@ test1 OK
 ```
 
 - 这部分要多运行几次，才能确保大概率正确
+
+```sh
+== Test running kalloctest == 
+$ make qemu-gdb
+(91.6s) 
+== Test   kalloctest: test1 == 
+  kalloctest: test1: OK 
+== Test   kalloctest: test2 == 
+  kalloctest: test2: OK 
+== Test kalloctest: sbrkmuch == 
+$ make qemu-gdb
+kalloctest: sbrkmuch: OK (12.0s) 
+== Test running bcachetest == 
+$ make qemu-gdb
+(49.1s) 
+== Test   bcachetest: test0 == 
+  bcachetest: test0: OK 
+== Test   bcachetest: test1 == 
+  bcachetest: test1: OK 
+== Test usertests == 
+$ make qemu-gdb
+usertests: OK (215.1s) 
+    (Old xv6.out.usertests failure log removed)
+== Test time == 
+time: FAIL 
+    Cannot read time.txt
+Score: 69/70
+make: *** [Makefile:317: grade] Error 1
+```
 
 ### 实验拓展
 

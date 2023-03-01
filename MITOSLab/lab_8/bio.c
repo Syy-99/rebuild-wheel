@@ -65,9 +65,9 @@ bget(uint dev, uint blockno)
 
   uint key = BUFMAP_HASH(dev, blockno);
 
-  // 1. 根据哈希函数，到对应桶中判断是否有它的块的缓存
-  acquire(&bcache.bufmap_locks[key]);   // 需要加锁
+  acquire(&bcache.bufmap_locks[key]);
 
+  // Is the block already cached?
   for(b = bcache.bufmap[key].next; b; b = b->next){
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
@@ -75,64 +75,96 @@ bget(uint dev, uint blockno)
       acquiresleep(&b->lock);
       return b;
     }
-  } 
-  release(&bcache.bufmap_locks[key]); 
-  // 这里必须释放，否则会出现两个请求出现环路死锁
-  // 但是如何解决两个进程访问同一个不存在的block问题呢？ (导致一个block可能被缓存两次)
-  // 目前想法是：再检查一次
+  }
 
-  // 到这里，说明对应桶中没有它的块缓存，则为其添加缓存，并加入对应桶中
-  acquire(&bcache.lock);    // 避免选择的buf又被其他线程选中
+  // Not cached.
 
+  // to get a suitable block to reuse, we need to search for one in all the buckets,
+  // which means acquiring their bucket locks.
+  // but it's not safe to try to acquire every single bucket lock while holding one.
+  // it can easily lead to circular wait, which produces deadlock.
+
+  release(&bcache.bufmap_locks[key]);
+  // we need to release our bucket lock so that iterating through all the buckets won't
+  // lead to circular wait and deadlock. however, as a side effect of releasing our bucket
+  // lock, other cpus might request the same blockno at the same time and the cache buf for  
+  // blockno might be created multiple times in the worst case. since multiple concurrent
+  // bget requests might pass the "Is the block already cached?" test and start the 
+  // eviction & reuse process multiple times for the same blockno.
+  //
+  // so, after acquiring eviction_lock, we check "whether cache for blockno is present"
+  // once more, to be sure that we don't create duplicate cache bufs.
+  acquire(&bcache.lock);
+
+  // Check again, is the block already cached?
+  // no other eviction & reuse will happen while we are holding eviction_lock,
+  // which means no link list structure of any bucket can change.
+  // so it's ok here to iterate through `bcache.bufmap[key]` without holding
+  // it's cooresponding bucket lock, since we are holding a much stronger eviction_lock.
+  for(b = bcache.bufmap[key].next; b; b = b->next){
+    if(b->dev == dev && b->blockno == blockno){
+      acquire(&bcache.bufmap_locks[key]); // must do, for `refcnt++`
+      b->refcnt++;
+      release(&bcache.bufmap_locks[key]);
+      release(&bcache.lock);
+      acquiresleep(&b->lock);
+      return b;
+    }
+  }
+
+  // Still not cached.
+  // we are now only holding eviction lock, none of the bucket locks are held by us.
+  // so it's now safe to acquire any bucket's lock without risking circular wait and deadlock.
+
+  // find the one least-recently-used buf among all buckets.
+  // finish with it's corresponding bucket's lock held.
   struct buf *before_least = 0; 
   uint holding_bucket = -1;
   for(int i = 0; i < NBUFMAP_BUCKET; i++){
- 
+    // before acquiring, we are either holding nothing, or only holding locks of
+    // buckets that are *on the left side* of the current bucket
+    // so no circular wait can ever happen here. (safe from deadlock)
     acquire(&bcache.bufmap_locks[i]);
-
+    int newfound = 0; // new least-recently-used buf found in this bucket
     for(b = &bcache.bufmap[i]; b->next; b = b->next) {
-      if(i == key && b->dev == dev && b->blockno == blockno){
-        b->refcnt++;
-        release(&bcache.bufmap_locks[key]);
-        release(&bcache.lock);
-        acquiresleep(&b->lock);
-        return b;
-      }
-        // 找某个桶中的最久未使用的buf， 并且保存它的前一个结点指针
       if(b->next->refcnt == 0 && (!before_least || b->next->lastuse < before_least->next->lastuse)) {
-          before_least = b;
-          holding_bucket = i;
-        }
+        before_least = b;
+        newfound = 1;
+      }
     }
-
-    release(&bcache.bufmap_locks[i]);
+    if(!newfound) {
+      release(&bcache.bufmap_locks[i]);
+    } else {
+      if(holding_bucket != -1) release(&bcache.bufmap_locks[holding_bucket]);
+      holding_bucket = i;
+      // keep holding this bucket's lock....
+    }
   }
-
   if(!before_least) {
     panic("bget: no buffers");
   }
   b = before_least->next;
-
+  
   if(holding_bucket != key) {
     // remove the buf from it's original bucket
     before_least->next = b->next;
-
+    release(&bcache.bufmap_locks[holding_bucket]);
+    // rehash and add it to the target bucket
     acquire(&bcache.bufmap_locks[key]);
     b->next = bcache.bufmap[key].next;
     bcache.bufmap[key].next = b;
   }
-
+  
   b->dev = dev;
   b->blockno = blockno;
   b->refcnt = 1;
   b->valid = 0;
-  if(holding_bucket != key)
-    release(&bcache.bufmap_locks[key]);
+  release(&bcache.bufmap_locks[key]);
   release(&bcache.lock);
-
   acquiresleep(&b->lock);
   return b;
 }
+
 
 // Return a locked buf with the contents of the indicated block.
 struct buf*
