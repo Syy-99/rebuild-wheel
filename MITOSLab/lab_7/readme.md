@@ -18,8 +18,7 @@
 
     - 见具体代码文件
 
-
-完善`uthread.c`中的函数 
+3. 完善`uthread.c`中的函数 
 
     - `thread_schedule()` 参考内核函数`scheduler()`,调用上下文切换函数即可 
     
