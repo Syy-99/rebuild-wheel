@@ -203,3 +203,65 @@ ALL TESTS PASSED
 1. 增加一个新的系统调用 
 
     - 具体流程略
+
+2. 实现`sys_symlink()`(kernel/sysfile.c)
+
+    ```c
+    uint64
+    sys_symlink(void)
+    {
+        struct inode *ip;
+
+        // 1. 获得参数
+        char target[MAXPATH], path[MAXPATH];
+        if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+            return -1;
+
+        // 2. 开始操作文件系统
+        begin_op();
+
+        ip = create(path, T_SYMLINK, 0, 0);   // 创建一个inode, 类型是T_SYMLINK
+        if(ip == 0){
+            end_op();
+            return -1;
+        }
+
+        // inode的第一个直接数据块存储链接的文件名
+        if(writei(ip, 0, (uint64)target, 0, strlen(target)) < 0) {
+            end_op();
+            return -1;
+        }
+
+        iunlockput(ip);
+
+        end_op();
+        return 0;
+    }
+    ```
+3. 修改`sys_open()`(kernel/sysfile.c), 当遇到`T_SYMLINK`类型的inode时，需要读取它实际指向的文件inode
+
+    ```c
+    
+    ```
+
+
+### 实验结果
+
+```sh
+init: starting sh
+$ symlinktest
+Start: test symlinks
+open_symlink: path "/testsymlink/a" is not exist
+open_symlink: links form a cycle
+test symlinks: ok
+Start: test concurrent symlinks
+test concurrent symlinks: ok
+$ QEMU: Terminated
+syy@syyhost:~/xv6-labs-2020$ ./grade-lab-fs symlinktest 
+make: 'kernel/kernel' is up to date.
+== Test running symlinktest == (2.3s) 
+== Test   symlinktest: symlinks == 
+  symlinktest: symlinks: OK 
+== Test   symlinktest: concurrent symlinks == 
+  symlinktest: concurrent symlinks: OK 
+```
