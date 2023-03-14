@@ -309,8 +309,9 @@ Requests: 0 susceed, 411626 failed.
       //...
     }
     ```
-  - WebBench中，每个子进程在成功发送HTTP请求后就断开,但unimplemented构造HTTP响应包是一步一步调用send的。所以第一次发是成功的，第二次就失败，而且TinyHttpd在send的时候没有异常判断和处理，所以程序卡死
-  > inux下当连接断开，还发数据的时候，不仅send()的返回值会有反映，而且还会向系统发送一个异常消息，如果不作处理，系统会出BrokePipe，程序会退出，这对于服务器提供稳定的服务将造成巨大的灾难。
+    - WebBench中，每个子进程在成功发送HTTP请求后就断开,但unimplemented构造HTTP响应包是一步一步调用send的。所以第一次发送成功的，第二次就失败，而且TinyHttpd在send的时候没有异常判断和处理，所以程序卡死
+  
+      > Linux下当服务器连接断开，客户端还发数据的时候，因为连接失败发送出错，不仅send()的返回值会有反映，而且还会向系统发送一个异常消息，如果不作处理，系统会出 BrokePipe，程序会退出。
 
 - 解决：
   1. 将unimplemented内的所有信息通过一个send发送
