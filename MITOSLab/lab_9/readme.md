@@ -241,9 +241,69 @@ ALL TESTS PASSED
 3. 修改`sys_open()`(kernel/sysfile.c), 当遇到`T_SYMLINK`类型的inode时，需要读取它实际指向的文件inode
 
     ```c
-    
+      // 修改
+    if(ip->type == T_SYMLINK && (omode & O_NOFOLLOW) == 0) {
+        if((ip = follow_symlink(ip)) == 0) {
+        // 此处不用调用iunlockput()释放锁,因为在follow_symlinktest()返回失败时ip的锁在函数内已经被释放
+        end_op();
+        return -1;
+        }
+    }
+
+    if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+        if(f)
+        fileclose(f);
+        iunlockput(ip);
+        end_op();
+        return -1;
+    }
     ```
 
+    - `follow_symlink`:
+
+        ```c
+         struct inode* follow_symlink(struct inode* ip) {
+            uint inums[10]; // 最多找10次
+            int i, j;
+            char target[MAXPATH];
+
+            for(i = 0; i < 10; ++i) {
+                inums[i] = ip->inum;
+
+                // read the target path from symlink file
+                if(readi(ip, 0, (uint64)target, 0, MAXPATH) <= 0) {
+                    iunlockput(ip);
+                    // printf("open_symlink: open symlink failed\n");
+                    return 0;
+                }
+                iunlockput(ip);
+                
+                // get the inode of target path 
+                if((ip = namei(target)) == 0) {
+                    // printf("open_symlink: path \"%s\" is not exist\n", target);
+                    return 0;
+                }
+
+                // 判断这个inode是否重复出现，如果重复出现则一定会有环
+                for(j = 0; j <= i; ++j) {
+                    if(ip->inum == inums[j]) {
+                        // printf("open_symlink: links form a cycle\n");
+                        return 0;
+                    }
+                }
+
+                ilock(ip);
+
+                if(ip->type != T_SYMLINK) {
+                    return ip;
+                }
+            }
+
+            iunlockput(ip);
+            // printf("open_symlink: the depth of links reaches the limit\n");
+            return 0;
+        }
+        ```
 
 ### 实验结果
 
