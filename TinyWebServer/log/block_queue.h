@@ -2,7 +2,7 @@
 #define BLOCK_QUEUE_H
 
 #include <iostream>
-#include <stdlib.h>
+#include <cstdlib>
 #include <pthread.h>
 #include <sys/time.h>
 #include "../lock/locker.h"
@@ -12,7 +12,7 @@ class block_queue
 {
 public:
     // 设置队列的大小
-    block_queue(int max_size = 1000);
+    explicit block_queue(int max_size = 1000);
 
     // 清空队列
     void clear();
@@ -59,6 +59,6 @@ private:
 
     // 模拟队列, 保存队头和队尾的位置索引
     int block_queue_front_;
-    int block_quque_back_;
+    int block_queue_back_;
 };
 #endif

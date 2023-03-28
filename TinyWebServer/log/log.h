@@ -1,9 +1,11 @@
 #ifndef LOG_H
 #define LOG_H
 
-#include <stdio.h>
+#include <cstdio>
 #include "../lock/locker.h"
 #include "block_queue.h"
+#include <string>
+using std::string;
 
 // 1. 使用单例模式生成的日志对象
 // 2. 支持同步日志(默认)和异步日志：异步日志通过实现一个阻塞队列来实现
@@ -30,12 +32,31 @@ public:
     void write_log(int levle, const char *format, ...);
 
     // 强制刷新
-    void Log::flush(void);
+    void flush();
+
+
+    static void * flush_log_thread(void *args)
+    {
+        Log::get_instance()->async_write_log();
+        return nullptr;
+    }
 
 private:
     Log();
 
     ~Log();
+    
+    void async_write_log()     // 异步线程，将日志写到文件中
+    {
+        string single_log;
+        //从阻塞队列中取出一个日志string，写入文件
+        while (log_queue_->pop(single_log)) // 正常来说，这个while不会结束
+        {
+            log_file_mutex.lock();
+            fputs(single_log.c_str(), log_file_fd_);
+            log_file_mutex.unlock();
+        }
+    }
 
 private:
     char log_dir_name_[128];    // 日志文件保存的路径
@@ -50,9 +71,7 @@ private:
     int log_line_count_;     // 日志文件已经使用的条数记录
 
     bool log_is_async_;      // 判断是否设置为异步日志
-
-
-    block_queue<string> *m_log_queue; // 阻塞队列
+    block_queue<string> *log_queue_; // 阻塞队列
     
     locker log_file_mutex;      // 日志对象是共享的资源，因此它的访问需要加锁
     

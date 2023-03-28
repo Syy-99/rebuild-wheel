@@ -1,16 +1,14 @@
 
 #include "log.h"
-#include <string.h>
-#include <time.h>
-#include <sys/time.h>
-#include <stdarg.h> 
-#include <string>
-using namespace std;
+#include <cstring>
+#include <ctime>
+#include <cstdarg>
+using std::string;
 
 Log::Log()
 {
     log_line_count_ = 0;
-    log_is_async_ = false;
+    log_is_async_ = false;      // 默认使用同步日志
 }
 
 Log::~Log() {
@@ -24,7 +22,14 @@ bool Log::init(const char *file_name, int log_buf_size, int split_lines, int max
     //如果设置了max_queue_size,则设置为异步
     if (max_queue_size >= 1) {
         log_is_async_ = true;
-        // ...
+       
+        // 设置阻塞队列
+        log_queue_ = new block_queue<string>(max_queue_size);
+        
+        pthread_t tid;
+        //flush_log_thread为回调函数,这里表示创建线程异步写日志
+        pthread_create(&tid, NULL, flush_log_thread, NULL);
+
     }
 
     // 初始化日志缓冲
@@ -150,12 +155,11 @@ void Log::write_log(int level, const char *format,...) {
     log_file_mutex.unlock();
 
     
-    // if (log_is_async_ && !m_log_queue->full())
-    if (log_is_async_)
+    if (log_is_async_ && !log_queue_->full())   // 异步日志先写到内存中
     {
-     //   m_log_queue->push(log_str);
+        log_queue_->push(log_str);
     }
-    else
+    else    // 同步日志直接写到磁盘中
     {
         log_file_mutex.lock();
         fputs(log_str.c_str(), log_file_fd_);
@@ -167,7 +171,7 @@ void Log::write_log(int level, const char *format,...) {
 }
 
 
-void Log::flush(void)
+void Log::flush()
 {
      log_file_mutex.lock();
     //强制刷新写入流缓冲区

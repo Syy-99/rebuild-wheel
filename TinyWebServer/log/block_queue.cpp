@@ -1,9 +1,9 @@
+#include <ctime>
 #include "block_queue.h"
 
 template <typename T>
-block_queue<T>::block_queue(int max_size = 1000)
+block_queue<T>::block_queue(int max_size)
 {
-
     if (max_size <= 0)
     {
         exit(-1);
@@ -13,7 +13,7 @@ block_queue<T>::block_queue(int max_size = 1000)
     block_queue_ptr_ = new T[max_size];
     block_queue_size_ = 0;
     block_queue_front_ = -1;
-    block_quque_back_ = -1;
+    block_queue_back_ = -1;
 }
 
 template <typename T>
@@ -23,7 +23,7 @@ void block_queue<T>::clear()
 
     block_queue_size_ = 0;
     block_queue_front_ = -1;
-    block_quque_back_ = -1;
+    block_queue_back_ = -1;
 
     block_queue_mutex_.unlock();
 }
@@ -31,54 +31,54 @@ void block_queue<T>::clear()
 template <typename T>
 bool block_queue<T>::full()
 {
-    m_mutex.lock();
-    if (m_size >= m_max_size)
+    block_queue_mutex_.lock();
+    if (block_queue_size_ >= block_queue_max_size_)
     {
-        m_mutex.unlock();
+        block_queue_mutex_.unlock();
         return true;
     }
-    m_mutex.unlock();
+    block_queue_mutex_.unlock();
     return false;
 }
 
 template <typename T>
 bool block_queue<T>::empty()
 {
-    m_mutex.lock();
-    if (0 == m_size)
+    block_queue_mutex_.lock();
+    if (0 == block_queue_size_)
     {
-        m_mutex.unlock();
+        block_queue_mutex_.unlock();
         return true;
     }
-    m_mutex.unlock();
+    block_queue_mutex_.unlock();
     return false;
 }
 
 template <typename T>
 bool block_queue<T>::front(T &value)
 {
-    m_mutex.lock();
-    if (0 == m_size)
+    block_queue_mutex_.lock();
+    if (0 == block_queue_size_)
     {
-        m_mutex.unlock();
+        block_queue_mutex_.unlock();
         return false;
     }
-    value = m_array[m_front];
-    m_mutex.unlock();
+    value = block_queue_ptr_[block_queue_front_];
+    block_queue_mutex_.unlock();
     return true;
 }
 
 template <typename T>
 bool block_queue<T>::back(T &value)
 {
-    m_mutex.lock();
-    if (0 == m_size)
+    block_queue_mutex_.lock();
+    if (0 == block_queue_size_)
     {
-        m_mutex.unlock();
+        block_queue_mutex_.unlock();
         return false;
     }
-    value = m_array[m_back];
-    m_mutex.unlock();
+    value = block_queue_ptr_[block_queue_back_];
+    block_queue_mutex_.unlock();
     return true;
 }
 template <typename T>
@@ -86,10 +86,10 @@ int block_queue<T>::size()
 {
     int tmp = 0;
 
-    m_mutex.lock();
-    tmp = m_size;
+    block_queue_mutex_.lock();
+    tmp = block_queue_size_;
 
-    m_mutex.unlock();
+    block_queue_mutex_.unlock();
     return tmp;
 }
 
@@ -98,10 +98,10 @@ int block_queue<T>::max_size()
 {
     int tmp = 0;
 
-    m_mutex.lock();
-    tmp = m_max_size;
+    block_queue_mutex_.lock();
+    tmp = block_queue_max_size_;
 
-    m_mutex.unlock();
+    block_queue_mutex_.unlock();
     return tmp;
 }
 
@@ -120,8 +120,8 @@ bool block_queue<T>::push(const T &item)
     }
 
     // 队列未满，可以插入
-    block_quque_back_ = (block_quque_back_ + 1) % block_queue_max_size_; // 循环使用
-    block_queue_ptr_[block_quque_back_] = item;
+    block_queue_back_ = (block_queue_back_ + 1) % block_queue_max_size_; // 循环使用
+    block_queue_ptr_[block_queue_back_] = item;
 
     block_queue_size_++;
 
@@ -138,8 +138,11 @@ bool block_queue<T>::pop(T &item)
     // 如果调用pop时，队列为空，则加入等待队列，直到它被唤醒
     while (block_queue_size_ <= 0)
     {
+        // wait()成员函数会阻塞，直到被唤醒，会返回true
+        // 如果wait()返回false,说明是pthread_cond_wait返回-1，执行出错
         if (!block_queue_cond_.wait(block_queue_mutex_.get()))
         {
+           
             block_queue_mutex_.unlock();
             return false;
         }
@@ -166,9 +169,9 @@ bool block_queue<T>::pop(T &item, int ms_timeout)
         t.tv_sec = now.tv_sec + ms_timeout / 1000;
         t.tv_nsec = (ms_timeout % 1000) * 1000;
 
-        if (!m_cond.timewait(m_mutex.get(), t))
+        if (!block_queue_cond_.timewait(block_queue_mutex_.get(), t))
         {
-            m_mutex.unlock();
+            block_queue_mutex_.unlock();
             return false;
         }
     }
@@ -183,10 +186,10 @@ bool block_queue<T>::pop(T &item, int ms_timeout)
 template <typename T>
 block_queue<T>::~block_queue()
 {
-    m_mutex.lock();
+    block_queue_mutex_.lock();
 
-    if (m_array != NULL)
-        delete[] m_array; // 释放空间
+    if (block_queue_ptr_ != NULL)
+        delete[] block_queue_ptr_; // 释放空间
 
-    m_mutex.unlock();
+    block_queue_mutex_.unlock();
 }

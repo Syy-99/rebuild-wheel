@@ -1,4 +1,4 @@
-// 线程同步机制包装类：通过RAII机制空间锁资源
+// 线程同步机制包装类：通过RAII机制管理锁资源
 // 线程同步的方法：信号量；互斥量；条件变量
 
 #ifndef LOCKER_H
@@ -19,7 +19,7 @@ public:
         }  
     }
     // 给予信号量一个初始值
-    sem(int num): {
+    sem(int num) {
         if (sem_init(&m_sem_,0, num) != 0) {
             throw std::exception();
         }  
@@ -120,4 +120,4 @@ private:
     pthread_cond_t m_cond;
 };
 
-#endif LOCKER_H
+#endif
