@@ -4,6 +4,8 @@
 #include <cassert>      // assert()
 
 #include "./log/log.h"
+#include "./CGImysql/sql_connection_pool.h"
+#include "./threadpool/threadpool.h"
 
 #define SYNLOG // 同步写日志
 // #define ASYNLOG //异步写日志
@@ -54,7 +56,19 @@ int main(int argc, char **argv)
     addsig(SIGPIPE, SIG_IGN);
 
     // 创建MySQL数据库连接池
+    connection_pool *connPool = connection_pool::GetInstance();
+    connPool->init("localhost", "syy", "", "yourdb", 3306, 8);  // 初始化数据库连接池（8个连接）
 
+    // 创建线程池
+    threadpool<http_conn> *pool = nullptr;
+    try
+    {
+        pool = new threadpool<http_conn>(connPool);
+    }
+    catch (...)
+    {
+        return 1;
+    }
 
     return 0;
 }

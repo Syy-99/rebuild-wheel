@@ -2,6 +2,12 @@
     "files.associations": {
         "crtdefs.h": "c",
         "*.tcc": "c",
-        "limits": "c"
+        "limits": "c",
+        "vector": "cpp",
+        "deque": "cpp",
+        "list": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "system_error": "cpp"
     }
 }
