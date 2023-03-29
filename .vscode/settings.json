@@ -8,6 +8,8 @@
         "list": "cpp",
         "string": "cpp",
         "unordered_map": "cpp",
-        "system_error": "cpp"
+        "system_error": "cpp",
+        "cerrno": "cpp",
+        "cstring": "cpp"
     }
 }

@@ -2,13 +2,38 @@
 #include <signal.h>    // sigaction
 #include <cstring>      // memset
 #include <cassert>      // assert()
+// socket编程API
+#include <sys/socket.h> 
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+#include <sys/epoll.h>  // epoll实现IO复用API
 
 #include "./log/log.h"
 #include "./CGImysql/sql_connection_pool.h"
 #include "./threadpool/threadpool.h"
+#include "./http/http_conn.h"
 
-#define SYNLOG // 同步写日志
+#define SYNLOG          // 同步写日志
 // #define ASYNLOG //异步写日志
+
+#define MAX_FD 65536    //最大文件描述符
+#define MAX_EVENT_NUMBER 10000 //最大事件数
+
+//这三个函数在http_conn.cpp中定义
+extern int addfd(int epollfd, int fd, bool one_shot);
+extern int setnonblocking(int fd);
+
+static int pipefd[2];      
+//信号处理函数
+void sig_handler(int sig)
+{
+    //为保证函数的可重入性，保留原来的errno
+    int save_errno = errno;
+    int msg = sig;
+    send(pipefd[1], (char *)&msg, 1, 0);     // ???这里发送个pipefd[1]有什么用？日志用吗？
+    errno = save_errno;
+}
 
 
 // 设置信号处理函数
@@ -30,6 +55,7 @@ void addsig(int sig, void(handler)(int), bool restart = true)
     assert(sigaction(sig, &sa, NULL) != -1);
 
 }
+
 
 int main(int argc, char **argv)
 {
@@ -63,12 +89,70 @@ int main(int argc, char **argv)
     threadpool<http_conn> *pool = nullptr;
     try
     {
-        pool = new threadpool<http_conn>(connPool);
+        pool = new threadpool<http_conn>(connPool);   // 指定该线程池中从哪个连接池中获取连接
     }
     catch (...)
     {
         return 1;
     }
+
+    http_conn *users = new http_conn[MAX_FD];   // 创建MAX_FD个http类对象
+    assert(users);
+    // 从数据库中，将所有的用户信息读取到内存中
+    users->initmysql_result(connPool);  // 这个和具体哪个HTTP连接没关系，因此直接调用即可
+
+    // 创建监听套接字
+    int listenfd = socket(PF_INET, SOCK_STREAM, 0);
+    assert(listenfd >= 0);
+
+    // 构造地址信息
+    struct sockaddr_in address;
+    memset(&address, 0, sizeof(address));
+    address.sin_family = AF_INET;
+    address.sin_port = htons(listen_port);
+    address.sin_addr.s_addr = htonl(INADDR_ANY);    // INADDR_ANY本机IP地址
+
+    // 配置套接字选项——SO_REUSEADDR： 处于Time-wait端口可以快速重用
+    int flag = 1;
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
+
+    // 监听套接字绑定到对应的端口
+    int ret = 0;
+    ret = bind(listenfd,(struct sockaddr*)&address, sizeof(address));
+    assert(ret >= 0);
+
+    // 开始监听
+    ret = listen(listenfd, 5);
+    assert(ret >= 0);
+
+    // 利用epoll进行IO复用
+    // 创建内核事件表
+    int epollfd = epoll_create(5);
+    assert(epollfd != -1); 
+
+    // 将监听套接字注册到内核事件表中，并设置其为非阻塞
+    addfd(epollfd, listenfd, false);  
+
+    //epoll_event events[MAX_EVENT_NUMBER];
+
+    // 创建管道， 这里的管道是为了实现统一事件源
+    // 管道写端写入信号值，管道读端通过I/O复用系统监测读事件
+    ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
+    addfd(epollfd, pipefd[0], false);   // 将管道的读事件注册到内核事件表中？？？
+    setnonblocking(pipefd[1]);          // 设置管道写端非阻塞
+
+    // 处理SIGALRM和SIGTERM信号，它们的信号处理函数只是将信号的类型写入管道
+    addsig(SIGALRM, sig_handler, false);    
+    addsig(SIGTERM, sig_handler, false);
+
+    client_data *users_timer = new client_data[MAX_FD];
+
+    // 循环条件
+    bool stop_server = false;   // 是否停止服务器进程的运行
+
+    //超时标志
+    bool timeout = false;
+    assert(ret != -1);
 
     return 0;
 }
