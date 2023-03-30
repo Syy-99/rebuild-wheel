@@ -244,6 +244,16 @@ Q: 没有对非阻塞返回值处理，如果阻塞是不是意味着这一次�
 
     - 是的，但定时事件是非必须立即处理的事件，可以允许这样的情况发生。
 
+Q: `EINTR`是什么错误?
+```c++
+int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
+if (number < 0 && errno != EINTR){
+        break;
+}
+```
+- 在epoll_wait时，因为设置了alarm定时触发警告，导致返回-1，errno为EINTR
+
+- 对于这种错误返回, 忽略这种错误
 
 ## 定时器——`lst_timer.h`
 

@@ -46,6 +46,12 @@ void addfd(int epollfd, int fd, bool one_shot)
     setnonblocking(fd);    // 设定监听套接字非阻塞读
 }
 
+// 从内核事件表中删除文件描述符
+void removefd(int epollfd, int fd)
+{
+    epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, 0);
+    close(fd);
+}
 
 
 //循环读取客户数据，直到无数据可读或对方关闭连接

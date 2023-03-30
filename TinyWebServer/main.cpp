@@ -13,9 +13,14 @@
 #include "./CGImysql/sql_connection_pool.h"
 #include "./threadpool/threadpool.h"
 #include "./http/http_conn.h"
+#include "./timer/lst_timer.h"
 
 #define SYNLOG          // 同步写日志
 // #define ASYNLOG //异步写日志
+
+
+//#define listenfdET //边缘触发非阻塞
+#define listenfdLT //水平触发阻塞
 
 #define MAX_FD 65536    //最大文件描述符
 #define MAX_EVENT_NUMBER 10000 //最大事件数
@@ -31,7 +36,7 @@ void sig_handler(int sig)
     //为保证函数的可重入性，保留原来的errno
     int save_errno = errno;
     int msg = sig;
-    send(pipefd[1], (char *)&msg, 1, 0);     // ???这里发送个pipefd[1]有什么用？日志用吗？
+    send(pipefd[1], (char *)&msg, 1, 0);     // 将信号的类型发送到管道中，进行统一信号源处理
     errno = save_errno;
 }
 
@@ -56,6 +61,13 @@ void addsig(int sig, void(handler)(int), bool restart = true)
 
 }
 
+
+void show_error(int connfd, const char *info)
+{
+    printf("%s", info);
+    send(connfd, info, strlen(info), 0);
+    close(connfd);
+}
 
 int main(int argc, char **argv)
 {
@@ -131,9 +143,11 @@ int main(int argc, char **argv)
     assert(epollfd != -1); 
 
     // 将监听套接字注册到内核事件表中，并设置其为非阻塞
-    addfd(epollfd, listenfd, false);  
+    addfd(epollfd, listenfd, false); 
+    http_conn::m_epollfd = epollfd;
 
-    //epoll_event events[MAX_EVENT_NUMBER];
+    epoll_event events[MAX_EVENT_NUMBER];   // 在调用epoll_wait时用来保存发生事件的fd
+
 
     // 创建管道， 这里的管道是为了实现统一事件源
     // 管道写端写入信号值，管道读端通过I/O复用系统监测读事件
@@ -154,5 +168,74 @@ int main(int argc, char **argv)
     bool timeout = false;
     assert(ret != -1);
 
+
+    while(!stop_server) 
+    {
+        int number = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
+        if (number < 0 && errno != EINTR){
+            LOG_ERROR("%s", "epoll failure");
+            break;
+        }
+
+        // 轮询文件描述符
+        for (int i = 0; i < number; i++) 
+        {
+            int sockfd = events[i].data.fd;
+
+            if (sockfd == listenfd) 
+            {   // 监听套接字有可读事件，说明有新的连接到来
+
+                struct sockaddr_in client_address;
+                socklen_t client_addrlength = sizeof(client_address);
+#ifdef listenfdLT
+                // 建立连接套接字
+                int confd = accept(listenfd, (struct sockaddr *)&client_address, &client_addrlength);
+                if (confd < 0) {
+                    LOG_ERROR("%s:errno is:%d", "accept error", errno);
+                    continue;   // 服务器程序继续执行
+                }
+
+                if (http_conn::m_user_count >= MAX_FD)
+                {
+                    show_error(connfd, "Internal server busy");
+                    LOG_ERROR("%s", "Internal server busy");
+                    continue;
+                }
+#endif                
+
+            }else if ((sockfd == pipefd[0]) && (events[i].events & EPOLLIN)) 
+            {  // 如果是管道读端的文件描述符发生可读事件，说明有信号发生触发信号处理函数，并将信号类型通过写端写入
+                int sig;
+                char signals[1024];
+
+                // 从管道的读端读出信号值
+                //正常情况下，这里的ret返回值总是1，只有14和15两个ASCII码对应的字符
+                ret = recv(pipefd[0], signals, sizeof(signals), 0);
+                if (ret == -1) // 执行出错
+                {
+                    continue;  
+                }
+                else if (ret == 0)  // 非阻塞读
+                {
+                    continue;
+                }else {
+
+                    // 处理信号值对应的逻辑
+                    for(int i = 0; i < ret; i++)
+                    {
+                        switch (signals[i])
+                        {
+                        case SIGALRM:
+                            timeout =true;
+                            break;
+                        case SIGTERM:
+                            stop_server = true;
+                        }
+                    }
+
+                }
+            }
+        }
+    }
     return 0;
 }

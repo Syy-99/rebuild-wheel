@@ -34,6 +34,11 @@ public:
     // 同步线程初始化数据库读取表
     void initmysql_result(connection_pool *connPool);
 
+public:
+    // ??这几个静态成员变量有什么用？？
+    static int m_epollfd;   // 在http_conn中保存epoll结构有什么用？？
+    static int m_user_count;
+    MYSQL *mysql
 private:
     int m_sockfd;   // 连接套接字，进行数据传输
 
