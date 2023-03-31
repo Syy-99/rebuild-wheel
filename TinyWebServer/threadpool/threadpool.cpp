@@ -101,7 +101,7 @@ void threadpool<T>::run()
         connectionRAII mysqlcon(&request->mysql, m_connPool);  
         // request->mysql： 该请求对应的数据库连接
         
-        // 处理这个请求
+        // 工作线程一旦读取到HTTP请求报文，则会处理这个客户端请求
         request->process();
     }
 }

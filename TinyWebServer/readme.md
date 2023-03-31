@@ -226,6 +226,99 @@ map<string, string> users;
 void http_conn::initmysql_result(connection_pool *coonPool);
 ```
 
+Q: 代码设计问题，为什么服务器端连接套接字需要开启`EPOLLONESHOT`?这个选项到底有什么作用，如何起作用?
+```c++
+//初始化连接,外部调用初始化套接字地址
+void http_conn::init(int sockfd, const sockaddr_in &addr)
+{
+    m_sockfd = sockfd;
+    m_address = addr;
+
+    addfd(m_epollfd, sockfd, true); // 将连接套接字加入epoll监听
+    //...
+}
+
+Q: 代码设计问题， 第一个条件是干什么用的？
+```c++
+// http_conn::HTTP_CODE http_conn::process_read()
+    while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
+    {
+        //...
+    }
+```
+- 在GET请求报文中，每一行都是\r\n作为结束，所以对报文进行拆解时，仅用从状态机的状态line_status=parse_line())==LINE_OK语句即可
+
+- 在POST请求报文中，消息体的末尾没有任何字符，所以不能使用从状态机的状态
+
+    这里转而使用主状态机的状态作为循环入口条件
+
+- 在完成消息体解析后，将line_status变量更改为LINE_OPEN，此时可以跳出循环，完成报文解析任务。
+
+    Q: 怎么知道一个HTTP报文的消息体读完了(如果一个HTTP报文分包传输)？或者说，如果有两个报文到达，通过缓冲区读的时候怎么知道现在开始读第二个报文呢
+
+        - 利用`content-length`字段
+
+Q: 代码逻辑问题，如何理解主状态机处理消息体的流程？
+```c++
+http_conn::HTTP_CODE http_conn::parse_headers(char *text)
+{
+    //...
+    // 判断是空行还是请求头
+    if (text[0] == '\0')    // 如果是空行
+    {
+        //判断是GET还是POST请求
+        if (m_content_length != 0)  // 如果m_content_length !=0,说明之前有Content-length字段，则主状态机转移
+        {
+            // 主状态机转移到消息体处理信息
+            m_check_state = CHECK_STATE_CONTENT;
+            return NO_REQUEST;      // ?? 为什们这里返回NO_REQUEST
+        }
+        return GET_REQUEST;    // 如果m_content_length ==0， 说明是GET请求
+    }
+    //...
+}
+http_conn::HTTP_CODE http_conn::parse_content(char *text)
+{
+    //判断buffer中是否完整的读取了消息体
+    if (m_read_idx >= (m_content_length + m_checked_idx))
+    {
+        text[m_content_length] = '\0';
+        //POST请求中最后为输入的用户名和密码
+        m_string = text;
+        return GET_REQUEST;
+    }
+    return NO_REQUEST;
+}
+```
+
+- 首先，我们假设这个HTTP报文有消息体，那么在`parse_headers`中，最终会改变主状态机`CHECK_STATE_CONTENT`，并且返回`NO_REQUEST`
+
+- 主状态机中的下一次while循环会直接根据第一个条件进入，然后执行`CHECK_STATE_CONTENT`状态的处理逻辑, 即调用`parse_content`
+
+- 注意到，此时`text`指向消息体的第一个位置, 又因为while是第一个条件进入的，此时m_checked_idx并没有改变，也就是说text也可以等于m_read_buf + m_checked_idx;
+
+- 因此m_content_length + m_checked_idx等于该报文完整的长度（请求行+消息头+消息体)
+
+- 因此，这里的if成立必须是读取到一个完整的HTTP报文才行，否则返回【请求不完整】
+
+    此时，下次的循环就会从`parse_line()`中进行，去读取一行
+
+Q：构造响应报文时，如何根据URL跳转到相应的界面?
+
+```C++
+ if (*(p + 1) == '3')
+ //..
+```
+
+- 实际上，这个和HTLM有关，当你点击一个按钮后，基于`action`属性会自动加到HTTP请求的URL中去
+
+    ```html
+    <!--judge.html-->
+    <form action="0" method="post">
+        <div align="center"><button type="submit">新用户</button></div>
+            </form>
+    ```
+
 ## `main.cpp`
 
 

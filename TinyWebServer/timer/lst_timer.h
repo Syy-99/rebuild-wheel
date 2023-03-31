@@ -24,6 +24,7 @@ struct client_data
 {
     sockaddr_in address;
     int sockfd;
+    
     util_timer *timer;
 };
 
