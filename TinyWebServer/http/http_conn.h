@@ -17,6 +17,9 @@ http连接处理类
 #include <unistd.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <sys/uio.h>
 
 #include "../CGImysql/sql_connection_pool.h"
 #include "../log/log.h"
@@ -74,6 +77,8 @@ public:
 
     // 根据连接套接字，构造HTTP请求对象
     void init(int sockfd, const sockaddr_in &addr);
+    // 关闭该HTTP连接
+    void close_conn(bool real_close = true);
 
     //读取浏览器端发来的全部数据
     bool read_once();
@@ -115,8 +120,23 @@ private:
     // 主状态机解析报文中的消息体
     HTTP_CODE parse_content(char *text);
 
-    // HTTP请求报文解析完毕后，通过该函数构造HTTP响应报文
+    // HTTP请求报文解析完毕后，对请求的文件进行分析
     HTTP_CODE do_request();
+
+
+    // 根据请求文件的分析, 将HTTP响应报文写入套接字
+    bool process_write(HTTP_CODE ret);
+    // 以下都是帮助构造响应报文的函数
+    bool add_response(const char *format, ...);
+    bool add_content(const char *content);
+    bool add_status_line(int status, const char *title);
+    bool add_headers(int content_length);
+    bool add_content_type();
+    bool add_content_length(int content_length);
+    bool add_linger();
+    bool add_blank_line();
+
+    void unmap();   // 解除之前使用mmap()对文件的映射操作
 
 public:
 
@@ -133,7 +153,7 @@ private:
 
     
     char m_write_buf[WRITE_BUFFER_SIZE];    // 存储相应报文的内容
-    int m_write_idx;
+    int m_write_idx;    // m_write_buf中数据的最后一个字节的下一个位置（实际上是记录读取的报文的长度）
 
 
     CHECK_STATE m_check_state;  // 主状态机的状态
@@ -150,13 +170,17 @@ private:
     char *m_host;       // HTTP报文中的Host信息
     int m_content_length;   // 如果是post请求，则有消息体，该字段记录消息体大小
     bool m_linger;      // 判断是否开启长连接   
-
     char *m_string;     //存储HTTP请求中消息头数据
 
     char m_real_file[FILENAME_LEN];     // 请求报文要获得的文件的完整路径
-     
+    struct stat m_file_stat;    // 请求报文要获得的文件的状态
+    char *m_file_address;   // 将请求要获得的文件映射到内存中的地址
+
+    struct iovec m_iv[2];   // writev进行集中写的数组
+    int m_iv_count;     // 记录数组使用的大小
+
     //发送的报文的信息
-    int bytes_to_send;      // 剩余发送字节数
+    int bytes_to_send;      // 记录需要发送的字节
     int bytes_have_send;    // 已发送字节数
 };
 
