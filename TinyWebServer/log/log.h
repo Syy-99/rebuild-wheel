@@ -2,9 +2,10 @@
 #define LOG_H
 
 #include <cstdio>
+#include <string>
 #include "../lock/locker.h"
 #include "block_queue.h"
-#include <string>
+
 using std::string;
 
 // 1. 使用单例模式生成的日志对象
@@ -15,6 +16,10 @@ public:
     // 单例模式需要禁止赋值构造函数
     Log(const Log &) = delete;
     Log &operator=(const Log &) = delete;
+
+    // 单例模式需要禁止移动构造函数
+    // Log(Log &&) = delete;
+    // Log &operator=(Log &&) = delete;
 
     // 单例模式：提供一个对外的获得对象实例的接口
     // C++11推荐使用静态局部变量的饿汉式方式
@@ -44,7 +49,7 @@ public:
 private:
     Log();
 
-    ~Log();
+    ~Log();     // 没必要使用virtual
 
     void async_write_log() // 异步线程，将日志写到文件中
     {
@@ -53,22 +58,21 @@ private:
         while (log_queue_->pop(single_log)) // 正常来说，这个while不会结束
         {
             log_file_mutex.lock();
-            fputs(single_log.c_str(), log_file_fd_);
+            fputs(single_log.c_str(), log_file_fd_);    // 写到文件中
             log_file_mutex.unlock();
         }
     }
 
 private:
-    char log_dir_name_[128];  // 日志文件保存的路径
-    char log_file_name_[128]; // 日志文件的名字
-
-    FILE *log_file_fd_; // 保存打开的日志文件的指针
+    char log_dir_name_[256];  // 日志文件保存的路径
+    char log_file_name_[256]; // 日志文件的名字
+    FILE *log_file_fd_;     // 保存打开的日志文件的指针
 
     char *log_buf_;    // 指向日志缓冲的指针(缓冲在内存中)
     int log_buf_size_; // 日志缓冲区大小（日志是磁盘文件，需要读取到内存进行读写）
 
-    int log_max_line_;   // 日志文件最大条数
-    int log_line_count_; // 日志文件已经使用的条数记录
+    int log_max_line_;   // 日志文件最大记录数
+    int log_line_count_; // 日志文件已经记录的条数
 
     bool log_is_async_;              // 判断是否设置为异步日志
     block_queue<string> *log_queue_; // 阻塞队列

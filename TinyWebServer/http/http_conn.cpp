@@ -10,7 +10,7 @@ using std::pair;
 #define listenfdLT //水平触发阻塞
 
 // 网站根目录
-const char *doc_root = "/home/syy/TinyWebServer-raw_version/root"; 
+const char *doc_root = "TinyWebServer/root"; 
 
 locker m_lock;
 

@@ -71,7 +71,7 @@ public:
         return pthread_mutex_unlock(&m_mutex_) == 0;
     }
 
-    // 获得互斥锁(条件变量可能使用)
+    // 获得互斥锁(条件变量需要使用)
     pthread_mutex_t *get()
     {
         return &m_mutex_;
@@ -106,7 +106,6 @@ public:
         return pthread_cond_timedwait(&m_cond, m_mutex, &t) == 0;
     }
 
-    // 
     bool signal()
     {
         return pthread_cond_signal(&m_cond) == 0;       // // 按调度策略和优先级，唤醒一个等待目标条件变量的线程

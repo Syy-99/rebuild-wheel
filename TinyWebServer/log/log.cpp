@@ -53,7 +53,7 @@ bool Log::init(const char *file_name, int log_buf_size, int split_lines, int max
         // int snprintf(char *str, size_t size, const char *format, ...) 
         // 可变参数(...)按照 format 格式化成字符串，并将字符串复制到 str 中，size 为要写入的字符的最大数目，超过 size 会被截断，最多写入 size-1 个字符。
         snprintf(log_file_full_name, 255, "%d_%02d_%02d_%s", my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday, file_name);
-        
+
         strcpy(log_file_name_, file_name);
     } else {        // 如果创建的文件包含目录名
         strcpy(log_file_name_, p + 1);
@@ -61,17 +61,20 @@ bool Log::init(const char *file_name, int log_buf_size, int split_lines, int max
         snprintf(log_file_full_name, 255, "%s%d_%02d_%02d_%s", log_dir_name_, my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday, log_file_name_);
     }
 
+    strcpy(log_file_name_, log_file_full_name);  // 保存日志文件名
+
     log_file_fd_ = fopen(log_file_full_name, "a");  // "a": 追加到一个文件。写操作向文件末尾追加数据。如果文件不存在，则创建文件。
     if (log_file_fd_ == NULL)
     {
         return false;
     }
 
-    log_file_today = my_tm.tm_mday;
+    log_file_today = my_tm.tm_mday; // 记录该日志在哪天创建
 
     return true;
 }
 
+// 写日志到日志文件
 void Log::write_log(int level, const char *format,...) {
 
     // 获得当前的时间的微妙
@@ -82,10 +85,17 @@ void Log::write_log(int level, const char *format,...) {
     struct tm *sys_tm = localtime(&t);
     struct tm my_tm = *sys_tm;
 
+    // 因为会对日志文件的属性进行访问/更新，因此需要加锁
     log_file_mutex.lock();
+
+    log_line_count_++;  // 日志已经写入的记录数
 
     // 判断是否需要新建log file
     if (log_file_today != my_tm.tm_mday || log_line_count_ % log_max_line_ == 0) {
+        // 关闭之前的日志文件（关闭之前刷新它的缓冲区）
+        fflush(log_file_fd_);
+        fclose(log_file_fd_);
+
         char new_log_file_name_prefix[16] = {0};
         snprintf(new_log_file_name_prefix, 16, "%d_%02d_%02d_", my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday);
 
@@ -97,18 +107,13 @@ void Log::write_log(int level, const char *format,...) {
         } else {       // 同一天的日志太多，则增加后缀
              snprintf(new_log_file_path, 255, "%s%s%s.%lld", log_dir_name_, new_log_file_name_prefix, log_file_name_, log_line_count_ / log_max_line_);
         }
-
-        // 关闭之前的日志文件（关闭之前刷新它的缓冲区）
-        fflush(log_file_fd_);
-        fclose(log_file_fd_);
-
         // 创建新的日志文件，并将日志写入定位到该文件
         log_file_fd_ = fopen(new_log_file_path,"a");
     }
 
     log_file_mutex.unlock();
 
-    // 开始构造日志的完整输出的一行内容
+    // 开始构造日志的完整输出的内容
 
     // 输出不同的日志等级
     char s[16] = {0};
@@ -138,7 +143,6 @@ void Log::write_log(int level, const char *format,...) {
     string log_str;
     log_file_mutex.lock();
 
-    log_line_count_++;
 
 
     //写入的具体时间内容格式：年-月-日 时：分：秒：毫秒 等级
