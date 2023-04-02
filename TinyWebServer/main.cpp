@@ -166,7 +166,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    // 创建MAX_FD个http类对象（因为支持MAX_FD个文件描述符，因此最多有MAX_FD个连接）
+    // 创建MAX_FD个http_conn对象（因为支持MAX_FD个文件描述符，因此最多有MAX_FD个连接）
     http_conn *users = new http_conn[MAX_FD];  
     assert(users);
 

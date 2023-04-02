@@ -35,6 +35,8 @@
 ---
 <font color='red'>Q: 单例模式的定义和实现方式?</font>
 
+- 略
+
 <font color='red'>Q: 阻塞队列如何实现生产者-消费者模型?</font>
 
 - 见下面介绍
@@ -98,31 +100,11 @@
 
 <font color='red'>Q: 是否可以考虑直接使用队列来实现?</font>
 
-<font color='red'>Q: 代码逻辑问题：多线程场景下，对阻塞队列大小的判断是否始终是不准确的呢?</font>
-
-考虑`block_<font color='red'>Queue.size()`成员函数：`size() `如果返回后，切换到其他线程，向队列中添加了元素，那获得的长度不就不对了吗?</font>
-
-同样的问题还在`full()/empty()`函数中
-
-```c++
-// 返回目前队列的大小
-int size() 
-{
-    int tmp = 0;
-
-    m_mutex.lock();
-    tmp = m_size;
-
-    m_mutex.unlock();
-    return tmp;
-}
-```
+- ==修改==，可考虑使用STL中的`deque`直接实现
 
 <font color='red'>Q: 代码逻辑问题：如果阻塞队列已经满了，那么该日志记录的插入操作没有完成，不就没有记录到日志文件中?</font>
 
 考虑`block_queue.push()`，如果队列满，则唤醒其他读线程，然后返回false, 那该日志记录不就没有加入阻塞队列，最终也就不会写入日志?
-
-难道说，在外部调用的时候，使用的是while循环吗?</font>感觉是这里的逻辑有问题?</font>?</font>
 
 ```c++
 // 如果阻塞队列已经满了，则无法插入，必须要其他线程读才行
@@ -134,12 +116,11 @@ if (block_queue_size_ >= block_queue_max_size_)
 }
 ```
 
-<font color='red'>Q：日志文件中，显示的时间怎么不对?</font>
+- ==修改==，这部分代码好像确实有问题，但是好像不太好实现
 
-```
-2023-04-01 04:01:02.685142 [info]: send data to the client(192.168.74.1)
-2023-04-01 04:01:02.685157 [info]: adjust timer once	// 实际当前是12点
-```
+- 我最开始想的是外部利用while循环，但是这样就阻塞程序运行
+
+- 感觉可以开一个线程来专门处理
 
 ### 日志——`log.h`&`log.cpp`
 
