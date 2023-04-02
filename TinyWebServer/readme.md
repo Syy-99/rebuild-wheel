@@ -6,11 +6,15 @@
 
 <font color='red'>Q：线程同步的机制有哪些?提供了哪些API?</font>
 
-- 参考《Linux高性能服务器编程》——第14章
+- 线条同步机制：信号量，条件变量，互斥量
+
+- 相关API，参考《Linux高性能服务器编程》
+
 
 <font color='red'>Q：是否可以考虑直接使用智能指针来避免增加这个类呢</font>
 
-==修改==
+- 智能指针管理的是内存区域，析构时调用的是`delete`, 而我们这里销毁信号量/条件变量/互斥量都是使用相关API，因此不能直接使用智能指针，需要自定义管理类和相关构造、析构函数
+
 
 <font color='red'>Q: 如何使用条件变量?</font>
 
@@ -29,14 +33,11 @@
 - **异步日志**：将生产者-消费者模型封装为**阻塞队列**，**创建一个写线程**，工作线程将要写的内容push进队列，**写线程从队列中取出内容，写入日志文件**
 
 ---
-
-<font color='red'>Q: 单例模式的定义和几种实现方式?</font>
+<font color='red'>Q: 单例模式的定义和实现方式?</font>
 
 <font color='red'>Q: 阻塞队列如何实现生产者-消费者模型?</font>
 
 - 见下面介绍
-
-<font color='red'>Q: 生产者-消费者的同步机制?</font>
 
 ### 阻塞队列——`block_<font color='red'>Queue.h`
 
@@ -54,44 +55,45 @@
 
 - 数组中保存的是`string`类型的元素，实际上就是此次需要写入日志的信息
 
-  <font color='red'>Q: string不是内存可变的吗?</font>那么`new string`会分配多少内存?</font>
+  <font color='red'>Q: string不是内存可变的吗?那么`new string`会分配多少内存?</font>
 
   - `string`变量是一种特殊的对象，它的内部保存了一个指针，指向一块内存， 这块内存用户存储字符串
   - 因此`sizeof(string变量)`只会计算该指针和其他成员的内存大小，而和它实际保存字符串的大小有关
 
-- `block_<font color='red'>Queue`类中提供了数组的头指针和尾指针
+- `block_queue`类中提供了数组的头指针和尾指针
 
   ```c++
-  // block.<font color='red>Queue.h
+  // block.queue.h
   // 模拟队列, 保存队头和队尾的位置索引
-  int block_<font color='red>Queue_front_;	// 指向队头的前一个位置（取出）
-  int block_<font color='red>Queue_back_;	// 指向队尾位置（插入）
+  int block_queue_front_;	// 指向队头的前一个位置（取出）
+  int block_queue_back_;	// 指向队尾位置（插入）
   
   // 初始化
-  block_<font color='red>Queue_front_ = -1;
-  block_<font color='red>Queue_back_ = -1;
+  block_queue_front_ = -1;
+  block_queue_back_ = -1;
   ```
 
-  <font color='red'>Q: 为什么要这么设计?</font>感觉这样设计不好，不容易理解?</font>
+  <font color='red'>Q: 为什么要这么设计两个指针的含义?感觉这样设计不好，不容易理解?</font>
 
   - 可以这样设计：
 
     ```
-    block_<font color='red>Queue_front_ 队头元素	block_<font color='red>Queue_back_队尾元素，初始都为0，
+    block_queue_front_ 队头元素;block_queue_back_队尾元素
+    初始都为0
     ```
 
-    但是这样需要修改下的push和pop操作==修改==
+    但是这样需要修改下的push和pop操作 ==修改==
 
     https://www.51cto.com/article/656335.html
 
 - 插入和弹出时都需要对大小取余
 
   ```c++
-  block_<font color='red>Queue_back_ = (block_<font color='red>Queue_back_ + 1) % block_<font color='red>Queue_max_size_; // 循环使用
-  block_<font color='red>Queue_ptr_[block_<font color='red>Queue_back_] = item;
+  block_queue_back_ = (block_queue_back_ + 1) % block_queue_max_size_; // 循环使用
+  block_queue_ptr_[block_queue_back_] = item;
   
-  block_<font color='red>Queue_front_ = (block_<font color='red>Queue_front_ + 1) % block_<font color='red>Queue_max_size_;
-  item = block_<font color='red>Queue_ptr_[block_<font color='red>Queue_front_]; // 注意这里顺序，front先加1
+  block_queue_front_ = (block_queue_front_ + 1) % block_queue_max_size_;
+  item = block_queue_ptr_[block_queue_front_]; // 注意这里顺序，front先加1
   ```
 
 <font color='red'>Q: 是否可以考虑直接使用队列来实现?</font>
@@ -124,10 +126,10 @@ int size()
 
 ```c++
 // 如果阻塞队列已经满了，则无法插入，必须要其他线程读才行
-if (block_<font color='red>Queue_size_ >= block_<font color='red>Queue_max_size_)
+if (block_queue_size_ >= block_queue_max_size_)
 {
-    block_<font color='red>Queue_cond_.broadcast(); // 唤醒等待的线程(只有读线程会等待)
-    block_<font color='red>Queue_mutex_.unlock();
+    block_queue_cond_.broadcast(); // 唤醒等待的线程(只有读线程会等待)
+    block_queue_mutex_.unlock();
     return false;		// 返回false
 }
 ```
@@ -215,7 +217,7 @@ Log::~Log()
 
 ```c++
 
-bool Log::init(const char *file_name, int log_buf_size, int split_lines, int max_<font color='red>Queue_size){
+bool Log::init(const char *file_name, int log_buf_size, int split_lines, int max_queue_size){
   //...
 }
 
@@ -245,9 +247,9 @@ else
 <font color='red'>Q: 代码逻辑问题，下面的代码，当`log_<font color='red'>Que<font color='red'>Qu`满了，那这个日志记录不就丢失了?</font>
 
 ```c++
-if (log_is_async_ && !log_<font color='red>Queue_->full())   // 异步日志先写到内存中
+if (log_is_async_ && !log_queue_->full())   // 异步日志先写到内存中
 {
-    log_<font color='red>Queue_->push(log_str);
+    log_queue_->push(log_str);
 }
 ```
 
@@ -285,7 +287,7 @@ if (log_is_async_ && !log_<font color='red>Queue_->full())   // 异步日志先�
 ​    \- 个人认为，只有在size()不等于0的时候才调用连接池，否则就直接创建
 
 ```c++
-MYS<font color='red>QL *connection_pool::GetConnection()
+MYSqL *connection_pool::GetConnection()
 {   
     if (0 == connect_list_.size()) { 
         return nullptr;     
@@ -370,14 +372,14 @@ void thread_func(void* thread_arg)
 
 ```c++
 template <typename T>
-bool threadpool<T>::append(T *re<font color='red>Quest)
+bool threadpool<T>::append(T *request)
 {
-    <font color='red>Queue_lock_.lock();
+    queue_lock_.lock();
 
     // 如果请求队列已经满了，则返回false
-    if (re<font color='red>Q_<font color='red>Queue_.size() > max_re<font color='red>Quests)
+    if (req_queue_.size() > max_requests)
     {
-        <font color='red>Queue_lock_.unlock();
+        queue_lock_.unlock();
         return false;
     }
     //...
@@ -421,7 +423,7 @@ void threadpool<T>::run()
 ```c++
 //将表中的用户名和密码放入map
 map<string, string> users;
-void http_conn::initmys<font color='red>Ql_result(connection_pool *coonPool);
+void http_conn::initmysql_result(connection_pool *coonPool);
 ```
 
 <font color='red'>Q: Socket套接字什么时候需要开启`EPOLLONESHOT`</font>
@@ -444,9 +446,9 @@ http_conn::HTTP_CODE http_conn::parse_headers(char *text)
         {
             // 主状态机转移到消息体处理信息
             m_check_state = CHECK_STATE_CONTENT;
-            return NO_RE<font color='red>QUEST;      // </font></font> 为什们这里返回NO_RE<font color='red>QUEST
+            return NO_REqUEST;      // </font></font> 为什们这里返回NO_REqUEST
         }
-        return GET_RE<font color='red>QUEST;    // 如果m_content_length ==0， 说明是GET请求
+        return GET_REqUEST;    // 如果m_content_length ==0， 说明是GET请求
     }
     //...
 }
@@ -459,9 +461,9 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
         text[m_content_length] = '\0';
         //POST请求中最后为输入的用户名和密码
         m_string = text;
-        return GET_RE<font color='red>QUEST;
+        return GET_REqUEST;
     }
-    return NO_RE<font color='red>QUEST;
+    return NO_REqUEST;
 }
 ```
 
