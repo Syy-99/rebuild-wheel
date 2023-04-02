@@ -120,7 +120,7 @@ if (block_queue_size_ >= block_queue_max_size_)
 
 - 我最开始想的是外部利用while循环，但是这样就阻塞程序运行
 
-- 感觉可以开一个线程来专门处理
+- <font color = 'red'>感觉可以开一个线程来专门处理，但是如果只是一个线程，那其他日志信息不也无法写入吗?难道要每次写日志都开一个线程?</font>
 
 ### 日志——`log.h`&`log.cpp`
 
@@ -133,18 +133,6 @@ if (block_queue_size_ >= block_queue_max_size_)
     // Log(Log &&) = delete;
     // Log &operator=(Log &&) = delete;
     ```
-
-
-- 代码设计问题：==修改==
-
-  ```c++
-  char log_dir_name_[256];  // 日志文件保存的路径
-  char log_file_name_[256]; // 日志文件的名字
-  
-  FILE *log_file_fd_;     // 保存打开的日志文件的指针
-  ```
-
-  - 这两个变量实际并没有用，因为最终使用的是`log_file_fd_`
 
 - 新建日志文件的逻辑：天数不同 or 该日志文件的记录超过限定
 
@@ -159,24 +147,24 @@ if (block_queue_size_ >= block_queue_max_size_)
 
   <font color='red'>Q: 只按照天来判断是否创建新的日志文件是否不合理呢?</font>
 
-  - 感觉应该按照年+月+日的方式吧?</font>==修改==
+  - 感觉应该按照年+月+日的方式吧?==修改==
 
   <font color='red'>Q: 为什们这里先改变日志记录?</font>
 
   - 注意，`log_line_count_`从0开始，所以实际上现在写入的数量就是`log_line_count_ + 1`
+  
   - 接着判断时间和日志中已经写入的记录数，来决定是否需要创建新日志文件
 
 - 提供四种宏，输出四种等级的日志信息：
 
   ```c++
   #define LOG_DEBUG(format, ...) Log::get_instance()->write_log(0, format, ##__VA_ARGS__)
+  //...
   ```
 
 ---
 
 <font color='red'>Q: `log`的析构函数是否需要特别关闭打开的文件?</font>
-
-==测试==
 
 ```c++
 Log::~Log()
@@ -188,7 +176,7 @@ Log::~Log()
 }
 ```
 
-- 当 C++ 程序终止时，它会自动关闭刷新所有流，释放所有分配的内存**（包括堆内存)**，并关闭所有打开的文件；
+- 当 C++ 程序终止时，它会**自动关闭刷新所有流，释放所有分配的内存，并关闭所有打开的文件**；
 
   因此，应该可以不用特别来关闭打开的文件
 
@@ -214,6 +202,7 @@ bool Log::init(const char *file_name, int log_buf_size, int split_lines, int max
 if (p == NULL)
 {
     snprintf(log_full_name, 255, "%d_%02d_%02d_%s", my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday, file_name);
+    // strcpy(log_file_name_, file_name);
 }
 else
 {
@@ -222,10 +211,9 @@ else
     snprintf(log_full_name, 255, "%s%d_%02d_%02d_%s", dir_name, my_tm.tm_year + 1900, my_tm.tm_mon + 1, my_tm.tm_mday, log_name);
 }
 ```
+- 这个应该有问题，在我的代码中添加了注释的代码
 
-- ==修改==
-
-<font color='red'>Q: 代码逻辑问题，下面的代码，当`log_<font color='red'>Que<font color='red'>Qu`满了，那这个日志记录不就丢失了?</font>
+<font color='red'>Q: 代码逻辑问题，下面的代码，当`log_queue`满了，那这个日志记录不就丢失了?</font>
 
 ```c++
 if (log_is_async_ && !log_queue_->full())   // 异步日志先写到内存中
@@ -233,13 +221,37 @@ if (log_is_async_ && !log_queue_->full())   // 异步日志先写到内存中
     log_queue_->push(log_str);
 }
 ```
+- 这个问题，和上面将日志信息写入一个满的block_queue类似
 
-- 结合`log_<font color='red'>Queue->full()`理解
+
+<font color='red'>Q: 代码设计问题：异步日志的意义在哪里? </font>
+
+考虑下面负载异步将日志刷新到磁盘的线程代码, 只要阻塞队列不为空，就会从其中取一个日志信息写入文件，那这样可能出现：写入一个日志到缓冲，然后就调用该线程将其写入磁盘。那这样，感觉异步就没有意义了
+```c++
+void async_write_log() // 异步线程，将日志写到文件中
+{
+    string single_log;
+    // 从阻塞队列中取出一个日志string，写入文件
+    while (log_queue_->pop(single_log)) // 正常来说，这个while不会结束
+    {
+        log_file_mutex.lock();
+        fputs(single_log.c_str(), log_file_fd_);    // 写到文件中
+        log_file_mutex.unlock();
+    }
+}
+```
+- 感觉这里的设计是有点问题，应该设置为当阻塞队列有一定的数量，再将日志一次性写入
+  
+  >异步日志：在记录日志时，不需要等待日志写入到磁盘后才返回程序的执行结果，而是在内存中先缓存日志，等到一定的时间或缓存量达到一定的阈值后，再一次性将缓存的日志批量写入到磁盘中
+  >
+  >同步日志是指在记录日志时，需要等待日志写入到磁盘后才会返回程序的执行结果
+- ==修改==
 
 > 面试题：
 >
-> 1. 异步多线程写日志不会出现日志乱序的问题吗?</font>
-> 2. 在向文件中写日志需要互斥加锁，那么这种并发有意义吗?</font>和单线程写日志有什么区别?</font>
+> 1. 异步日志不会出现日志乱序的问题吗?
+>   - 首先，日志插入缓存是按其生成时间插入的
+>   - 其次，日志线程是单线程，每次按顺序从缓存中去日志信息写入文件，因此不会出现乱序问题
 
 ## 数据库连接池——`s<font color='red'>Ql_connection_pool.h`&`s<font color='red'>Ql_connection_pool.cpp`
 
@@ -256,35 +268,38 @@ if (log_is_async_ && !log_queue_->full())   // 异步日志先写到内存中
 <font color='red'>Q: 如果连接池中没有可用连接，那是否应该在新建一个连接呢?而不是阻塞呢</font>
 
 考虑下面代码，如果数据库连接池中所有的连接都用完了，那这里就会一直阻塞，直到某个客户端断开连接，释放一个数据库连接
-
-这里的逻辑应该不合理	
-
-而且，这段代码好像也有问题
-
-​    \- 首先，如果size()==0就直接返回nullptr，那个信号量的wait就不可能阻塞了
-
-​    \- 即使有两个线程在size()=1时执行if,然后其中一个执行了wait后正常执行, 那么另一个就阻塞，直到有连接释放，这个逻辑是否不合理呢
-
-​    \- 个人认为，只有在size()不等于0的时候才调用连接池，否则就直接创建
-
 ```c++
-MYSqL *connection_pool::GetConnection()
-{   
-    if (0 == connect_list_.size()) { 
+// 当有请求时，从数据库中返回一个数据库连接
+MYSQL *connection_pool::GetConnection() 
+{
+    MYSQL *con = nullptr;
+
+    if (0 == connect_list_.size()) {  //? 有问题吧? 感觉和下面逻辑冲突了
         return nullptr;     
     }
+
     reserve.wait();     // 更新信号量，如果为0，则阻塞
     //...
 }
 ```
 
+这里的逻辑应该不合理	
+
+而且，这段代码好像也有问题
+
+​    - 首先，如果size()==0就直接返回nullptr，那个信号量的wait就不可能阻塞了
+
+​    - 即使有两个线程在size()=1时执行if,然后其中一个执行了wait后正常执行, 那么另一个就阻塞，直到有连接释放，这个逻辑是否不合理呢
+
+​    - 个人认为，只有在size()不等于0的时候才调用连接池，否则就直接创建
+
 <font color='red'>Q: 为什么这里析构函数需要特别断开数据库连接?</font>
 
-- MysQl服务器的连接断开操作通常是由客户端通知才会进行，因此必须对每个连接调用`mys<font color='red'>Ql_close()`函数
+- MysQl服务器的连接断开操作通常是由客户端通知才会进行，因此必须对每个连接调用`mysql_close()`函数
 
 <font color='red'>Q: 为什们数据库连接池对象需要额外使用一个类来实现RAII，而log对象却不需要做同样的操作呢?</font>
 
-  \- `connectionRAII`这个类只是用来管理从数据库连接池中**获取的连接**，是**为了确保从中获取的连接一定会返回到连接池中**
+  - `connectionRAII`这个类只是用来管理从数据库连接池中**获取的连接**，是**为了确保从中获取的连接一定会返回到连接池中**
 
 ## 半同步半反应堆线程池
 
@@ -410,77 +425,10 @@ void http_conn::initmysql_result(connection_pool *coonPool);
 <font color='red'>Q: Socket套接字什么时候需要开启`EPOLLONESHOT`</font>
 
 - `EPOLLONESHOT`：只监听一次事件，当监听完这次事件之后，如果还需要继续监听这个socket的话，需要再次把这个socket加入到EPOLL队列里
+
 - 通常，我们期望的是一个socket连接套接字在任一时刻都只被一个线程处理，因此对连接套接字会开启该选项
+
 - **当线程处理完后，需要通过epoll_ctl重置epolloneshot事件**
-
-<font color='red'>Q: 代码逻辑问题，如何理解主状态机处理消息体的流程?</font>
-
-```c++
-http_conn::HTTP_CODE http_conn::parse_headers(char *text)
-{
-    //...
-    // 判断是空行还是请求头
-    if (text[0] == '\0')    // 如果是空行
-    {
-        //判断是GET还是POST请求
-        if (m_content_length != 0)  // 如果m_content_length !=0,说明之前有Content-length字段，则主状态机转移
-        {
-            // 主状态机转移到消息体处理信息
-            m_check_state = CHECK_STATE_CONTENT;
-            return NO_REqUEST;      // </font></font> 为什们这里返回NO_REqUEST
-        }
-        return GET_REqUEST;    // 如果m_content_length ==0， 说明是GET请求
-    }
-    //...
-}
-
-http_conn::HTTP_CODE http_conn::parse_content(char *text)
-{
-    //判断buffer中是否完整的读取了消息体
-    if (m_read_idx >= (m_content_length + m_checked_idx))
-    {
-        text[m_content_length] = '\0';
-        //POST请求中最后为输入的用户名和密码
-        m_string = text;
-        return GET_REqUEST;
-    }
-    return NO_REqUEST;
-}
-```
-
-
-- 首先，我们假设这个HTTP报文有消息体，那么在`parse_headers`中，最终会改变主状态机`CHECK_STATE_CONTENT`，并且返回`NO_RE<font color='red'>QUEST`
-
-- 主状态机中的下一次while循环会直接根据第一个条件进入，然后执行`CHECK_STATE_CONTENT`状态的处理逻辑, 即调用`parse_content`
-
-- 注意到，此时`text`指向消息体的第一个位置, 又因为while是第一个条件进入的，此时m_checked_idx并没有改变，也就是说text也可以等于m_read_buf + m_checked_idx;
-
-- 因此m_content_length + m_checked_idx等于该报文完整的长度（请求行+消息头+消息体)
-
-- 因此，这里的if成立必须是读取到一个完整的HTTP报文才行，否则返回【请求不完整】
-
-    此时，下次的循环就会从`parse_line()`中进行，去读取一行
-
-
-<font color='red'>Q: 代码设计问题， 第一个条件是干什么用的?</font>
-```c++
-// http_conn::HTTP_CODE http_conn::process_read()
-while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
-{
-    //...
-}
-```
-- 在GET请求报文中，每一行都是\r\n作为结束，所以对报文进行拆解时，仅用从状态机的状态line_status=parse_line())==LINE_OK语句即可
-
-- 在POST请求报文中，消息体的末尾没有任何字符，所以不能使用从状态机的状态
-
-    这里转而使用主状态机的状态作为循环入口条件
-
-- 在完成消息体解析后，将line_status变量更改为LINE_OPEN，此时可以跳出循环，完成报文解析任务。
-
-    <font color='red'>Q: 怎么知道一个HTTP报文的消息体读完了(如果一个HTTP报文分包传输)?或者说，如果有两个报文到达，通过缓冲区读的时候怎么知道现在开始读第二个报文呢</font>
-
-    - 利用`content-length`字段
 
 <font color='red'>Q：构造响应报文时，如何根据URL跳转到相应的界面</font>
 
@@ -489,7 +437,7 @@ while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((lin
  //..
 ```
 
-- 实际上，这个和HTLM有关，当你点击一个按钮后，基于`action`属性会自动加到HTTP请求的URL中去
+- 实际上，这个和HTML有关，当你点击一个按钮后，基于`action`属性会自动加到HTTP请求的URL中去
 
     ```html
     <!--judge.html-->
@@ -497,6 +445,7 @@ while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((lin
     <div align="center"><button type="submit">新用户</button></div>
     </form>
     ```
+- 根据这个`action`属性，来返回对应的页面
 
 ## `main.cpp`
 
@@ -553,7 +502,7 @@ setnonblocking(pipefd[1]);          // 设置管道写端非阻塞
 
 - 管道的读端非阻塞不影响，因为会使用while函数了处理
 
-<font color='red'>Q:服务器需要处理的信号有哪些</font>
+<font color='red'>Q:服务器需要处理的信号有哪些?</font>
 
 - `SIGPIPE`: 对一个对端已经关闭的socket调用两次write, 第一次收到会收到一个	，第二次将会生成**SIGPIPE**信号, 该信号默认结束进程.
 - `SIGTERM`：终止程序信号
@@ -565,7 +514,9 @@ setnonblocking(pipefd[1]);          // 设置管道写端非阻塞
 alarm(TIMESLOT);
 ```
 
-- 定时判断定时器容器中的定时器是否超时，来释放连接
+- alarm的信号处理函数通过统一事件源传递给主循环，然后会去遍历定时器容器中的定时器是否超时，来释放连接
+
+- 所以实际上这是一个周期检查的工作
 
 <font color='red'>Q: `EINTR`是什么错误</font>
 ```c++
