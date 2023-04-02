@@ -140,10 +140,9 @@ void Log::write_log(int level, const char *format,...) {
     va_list valst;
     va_start(valst, format);
 
-    string log_str;
+    string log_str;     // 格式转换用
+
     log_file_mutex.lock();
-
-
 
     //写入的具体时间内容格式：年-月-日 时：分：秒：毫秒 等级
     int n = snprintf(log_buf_, 48, "%d-%02d-%02d %02d:%02d:%02d.%06ld %s ",
@@ -152,14 +151,15 @@ void Log::write_log(int level, const char *format,...) {
 
     // vsnprintf(): 将格式化的数据写入字符串
     int m = vsnprintf(log_buf_ + n, log_buf_size_ - 1, format, valst);
-    log_buf_[n + m] = '\n';
+    log_buf_[n + m] = '\n';     // 添加换行符
     log_buf_[n + m + 1] = '\0';        // vsnprintf()不会添加，需要手动加\0
+
     log_str = log_buf_;
 
     log_file_mutex.unlock();
 
     
-    if (log_is_async_ && !log_queue_->full())   // 异步日志先写到内存中
+    if (log_is_async_ && !log_queue_->full())   // 异步日志先写到阻塞队列中
     {
         log_queue_->push(log_str);
     }
@@ -173,7 +173,6 @@ void Log::write_log(int level, const char *format,...) {
     va_end(valst);  // 释放
     
 }
-
 
 void Log::flush()
 {

@@ -3,11 +3,13 @@
 
 connection_pool::connection_pool() 
 {
-   used_conn_ = 0;
-   free_conn_ = 0;
+	max_conn_ = 0;
+	used_conn_ = 0;
+   	free_conn_ = 0;
    // 其他数据成员要么无法默认初始化，要么会自动调用构造函数
 }
 
+// 单例模式获得对象
 connection_pool *connection_pool::GetInstance()
 {
 	static connection_pool connPool;
@@ -28,7 +30,7 @@ void connection_pool::init(string url, string User, string PassWord, string DBNa
 	for (int i = 0; i < MaxConn; i++)
 	{
 		MYSQL *con = NULL;
-		con = mysql_init(con);
+		con = mysql_init(con);	// 初始化一个MySQL连接
 
 		if (con == NULL)
 		{
@@ -55,7 +57,7 @@ void connection_pool::init(string url, string User, string PassWord, string DBNa
 	lock_.unlock();
 }
 
-// 当有请求时，从数据库中返回一个可以连接，并更新连接池中的记录
+// 当有请求时，从数据库中返回一个数据库连接
 MYSQL *connection_pool::GetConnection() 
 {
     MYSQL *con = nullptr;
@@ -135,13 +137,13 @@ connection_pool::~connection_pool()
 
 connectionRAII::connectionRAII(MYSQL **SQL, connection_pool *connPool){
 	*SQL = connPool->GetConnection();
-	
+	// 从数据库连接池中取出一个连接
 	conRAII = *SQL;
 	poolRAII = connPool;
 }
 
 connectionRAII::~connectionRAII(){
-	poolRAII->ReleaseConnection(conRAII);
+	poolRAII->ReleaseConnection(conRAII);	// 将连接放回数据库连接池中
 }
 
 

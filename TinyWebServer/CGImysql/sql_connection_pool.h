@@ -38,6 +38,7 @@ public:
 
 private:
     // 记录连接的数据库情况
+    // 这一部分的属性对每个连接都是一样的（因为都是访问同一个主机上的同一个数据库）
     string  url_;    // 主机地址
     string port_;    // 数据库端口号
     string user_;    // 登录数据库的用户名
@@ -46,9 +47,9 @@ private:
 
 private:
     locker lock_;   // 互斥锁
-    list<MYSQL *>  connect_list_;    // 连接池, 保存了mysql连接的信息
     sem reserve;      // 信号量实现多线程争夺连接
 
+    list<MYSQL *>  connect_list_;    // 连接池, 保存了mysql连接的信息
     unsigned int max_conn_;  //最大连接数
 	unsigned int used_conn_;  //当前已使用的连接数
 	unsigned int free_conn_; //当前空闲的连接数
@@ -64,8 +65,8 @@ public:
 	~connectionRAII();
 	
 private:
-	MYSQL *conRAII;     // 这个类管理的连接
-	connection_pool *poolRAII;  // 连接对应的连接池
+	MYSQL *conRAII;     // 这个类管理的数据库连接
+	connection_pool *poolRAII;  // 连接对应的连接池（指明了该数据库连接应该放回的位置）
 };
 
 

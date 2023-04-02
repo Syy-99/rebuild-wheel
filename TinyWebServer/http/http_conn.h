@@ -73,6 +73,11 @@ public:
         CONNECT,
         PATH
     };
+    
+public:
+    http_conn() {}
+    ~http_conn() {}
+
 public:
 
     // 根据连接套接字，构造HTTP请求对象

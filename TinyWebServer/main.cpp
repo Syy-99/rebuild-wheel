@@ -51,6 +51,13 @@ void sig_handler(int sig)
     errno = save_errno;
 }
 
+//定时处理任务，重新定时以不断触发SIGALRM信号
+void timer_handler()
+{
+    timer_lst.tick();
+    alarm(TIMESLOT);
+}
+
 
 // 设置信号处理函数
 // param 1: 需要处理的信号
@@ -86,59 +93,18 @@ void cb_func(client_data *user_data)
     Log::get_instance()->flush();
 }
 
-// ?????
+
 void show_error(int connfd, const char *info)
 {
     printf("%s", info);
-    send(connfd, info, strlen(info), 0);
-    close(connfd);
+    send(connfd, info, strlen(info), 0);    // 向客户端发送错误信息
+    close(connfd);  // 然后关闭连接
 }
 
-int main(int argc, char **argv)
+// 【修改】： 将创建监听套接字的逻辑封装
+int create_listen_socket(int listen_port)
 {
-
-// 日志系统和服务器程序一起启动
-#ifdef ASYNLOG
-    Log::get_instance()->init("ServerLog", 2000, 800000, 8); // 异步日志模型
-#endif
-
-#ifdef SYNLOG
-    Log::get_instance()->init("ServerLog", 2000, 800000, 0); // 同步日志模型
-#endif
-
-    // 未指定监听的端口号
-    if (argc <= 1)
-    {
-        printf("usage: %s ip_address port_number\n", basename(argv[0]));
-        return 1;
-    }
-
-    int listen_port = atoi(argv[1]);    // 获得需要监听的端口
-
-    // 服务器需要忽略SIGPIPE信号（默认行为是终止进程）
-    addsig(SIGPIPE, SIG_IGN);
-
-    // 创建MySQL数据库连接池
-    connection_pool *connPool = connection_pool::GetInstance();
-    connPool->init("localhost", "syy", "", "yourdb", 3306, 8);  // 初始化数据库连接池（8个连接）
-
-    // 创建线程池
-    threadpool<http_conn> *pool = nullptr;
-    try
-    {
-        pool = new threadpool<http_conn>(connPool);   // 指定该线程池中从哪个连接池中获取连接
-    }
-    catch (...)
-    {
-        return 1;
-    }
-
-    http_conn *users = new http_conn[MAX_FD];   // 创建MAX_FD个http类对象
-    assert(users);
-    // 从数据库中，将所有的用户信息读取到内存中
-    users->initmysql_result(connPool);  // 这个和具体哪个HTTP连接没关系，因此直接调用即可
-
-    // 创建监听套接字
+     // 创建监听套接字
     int listenfd = socket(PF_INET, SOCK_STREAM, 0);
     assert(listenfd >= 0);
 
@@ -162,27 +128,76 @@ int main(int argc, char **argv)
     ret = listen(listenfd, 5);
     assert(ret >= 0);
 
-    // 利用epoll进行IO复用
-    // 创建内核事件表
+    return listenfd;
+}
+
+int main(int argc, char **argv)
+{
+    // 未指定监听的端口号
+    if (argc <= 1)
+    {
+        printf("usage: %s ip_address port_number\n", basename(argv[0]));
+        return 1;
+    }
+
+    int listen_port = atoi(argv[1]);    // 获得需要监听的端口
+
+    // 创建日志对象
+#ifdef ASYNLOG
+    Log::get_instance()->init("ServerLog", 2000, 800000, 8); // 异步日志模型
+#endif
+
+#ifdef SYNLOG
+    Log::get_instance()->init("ServerLog", 2000, 800000, 0); // 同步日志模型
+#endif
+
+    // 创建MySQL数据库连接池
+    connection_pool *connPool = connection_pool::GetInstance();
+    connPool->init("localhost", "syy", "", "yourdb", 3306, 8);  // 设置数据库连接池属性
+
+    // 创建线程池
+    threadpool<http_conn> *pool = nullptr;      // 每个线程交互的请求队列中保存的是HTTP连接对象
+    try
+    {
+        pool = new threadpool<http_conn>(connPool);   // 指定该线程池中从哪个连接池中获取连接
+    }
+    catch (...)
+    {
+        return 1;
+    }
+
+    // 创建MAX_FD个http类对象（因为支持MAX_FD个文件描述符，因此最多有MAX_FD个连接）
+    http_conn *users = new http_conn[MAX_FD];  
+    assert(users);
+
+    // 从数据库中，将所有的用户信息读取到内存中
+    users->initmysql_result(connPool);  // 这个和具体哪个HTTP连接没关系，因此直接调用即可
+
+    // 创建监听套接字
+    int listenfd = create_listen_socket(listen_port);
+ 
+    // 创建epoll内核事件表
     epollfd = epoll_create(5);
     assert(epollfd != -1); 
 
     // 将监听套接字注册到内核事件表中，并设置其为非阻塞
-    addfd(epollfd, listenfd, false); 
+    addfd(epollfd, listenfd, false);    // 监听套接字不需要设置EPOLLONESHOT
     http_conn::m_epollfd = epollfd;
 
     epoll_event events[MAX_EVENT_NUMBER];   // 在调用epoll_wait时用来保存发生事件的fd
 
-
     // 创建管道， 这里的管道是为了实现统一事件源
     // 管道写端写入信号值，管道读端通过I/O复用系统监测读事件
-    ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
-    addfd(epollfd, pipefd[0], false);   // 将管道的读事件注册到内核事件表中？？？
+    int ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
+    assert(ret != -1);
+    addfd(epollfd, pipefd[0], false);   // 将管道的读端注册到内核事件表中，非阻塞
     setnonblocking(pipefd[1]);          // 设置管道写端非阻塞
 
     // 处理SIGALRM和SIGTERM信号，它们的信号处理函数只是将信号的类型写入管道
-    addsig(SIGALRM, sig_handler, false);    
-    addsig(SIGTERM, sig_handler, false);
+    addsig(SIGALRM, sig_handler, false);    // 定时器事件
+    addsig(SIGTERM, sig_handler, false);    // 中断事件
+    // 服务器还需要忽略SIGPIPE信号（默认行为是终止进程）
+    addsig(SIGPIPE, SIG_IGN);
 
     // 管理连接的定时器类
     client_data *users_timer = new client_data[MAX_FD];
@@ -192,7 +207,7 @@ int main(int argc, char **argv)
 
     //超时标志
     bool timeout = false;
-    assert(ret != -1);
+    alarm(TIMESLOT);
 
 
     while(!stop_server) 
@@ -210,7 +225,7 @@ int main(int argc, char **argv)
 
             if (sockfd == listenfd) 
             {   // 监听套接字有可读事件，说明有新的连接到来
-
+                // 半同步/半反应堆：主线程负责连接操作
                 struct sockaddr_in client_address;
                 socklen_t client_addrlength = sizeof(client_address);
 #ifdef listenfdLT
@@ -221,15 +236,17 @@ int main(int argc, char **argv)
                     continue;   // 服务器程序继续执行
                 }
 
+                // 超过最大连接限制
                 if (http_conn::m_user_count >= MAX_FD)
                 {
                     show_error(connfd, "Internal server busy");
                     LOG_ERROR("%s", "Internal server busy");
                     continue;
                 }
+                // 初始化该用户的HTTP连接(会将该连接套接字加入监听)
                 users[connfd].init(connfd, client_address);
 
-                //初始化client_data数据
+                
                 //创建定时器，设置回调函数和超时时间，绑定用户数据，将定时器添加到链表中
                 users_timer[connfd].address = client_address;
                 users_timer[connfd].sockfd = connfd;
@@ -280,10 +297,10 @@ int main(int argc, char **argv)
 #endif
             }
 
-            // 处理异常事件
+            // 处理该socket上的异常事件
             else if (events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR))
             {
-                // 服务器端关闭连接，移除对应的定时器
+                // 移除对应的定时器，同时也会移除蓝翔
                 util_timer *timer = users_timer[sockfd].timer;
                 timer->cb_func(&users_timer[sockfd]);
 
@@ -312,12 +329,12 @@ int main(int argc, char **argv)
                 }else {
 
                     // 处理信号值对应的逻辑
-                    for(int i = 0; i < ret; i++)
+                    for(int i = 0; i < ret; i++)    // 可能有多个信号
                     {
                         switch (signals[i])
                         {
                         case SIGALRM:
-                            timeout =true;
+                            timeout =true;     
                             break;
                         case SIGTERM:
                             stop_server = true;
@@ -326,7 +343,7 @@ int main(int argc, char **argv)
 
                 }
             }
-            // 如果是连接套接字上的事件
+            // 如果是连接套接字上的事件，并且可读（说明客户发送HTTP请求了）
             // 则处理客户连接上接收到的数据
             else if (events[i].events & EPOLLIN) // 对应的文件描述符可以读
             {
@@ -339,7 +356,7 @@ int main(int argc, char **argv)
                     Log::get_instance()->flush();
 
                     //若监测到读事件，将该事件放入请求队列，让工作线程可以处理
-                    pool->append(users + sockfd);
+                    pool->append(users + sockfd);   // 这里是将某个用户的HTTP连接对象加入请求队列中
 
                     //若有数据传输，则将定时器往后延迟3个单位
                     //并对新的定时器在链表上的位置进行调整
@@ -353,7 +370,7 @@ int main(int argc, char **argv)
                     }
                 }
                 else
-                {   // ???为什们这里直接关闭连接呢?
+                {   
                     timer->cb_func(&users_timer[sockfd]);
                     if (timer)
                     {
@@ -361,7 +378,8 @@ int main(int argc, char **argv)
                     }
                 }
             }
-            
+             // 如果是连接套接字上的事件，并且可读（说明工作线程构造好了响应报文）
+             // 则发送响应报文
             else if (events[i].events & EPOLLOUT)   // 对应的文件描述符可以写
             {
                 util_timer *timer = users_timer[sockfd].timer;
@@ -391,6 +409,20 @@ int main(int argc, char **argv)
                 }
             }
         }
+        if (timeout)    // 如果发生了定时事件
+        {
+            timer_handler();
+            timeout = false;
+        }
     }
+
+    // 服务器进程结束，释放资源
+    close(epollfd);
+    close(listenfd);
+    close(pipefd[1]);
+    close(pipefd[0]);
+    delete[] users;
+    delete[] users_timer;
+    delete pool;
     return 0;
 }

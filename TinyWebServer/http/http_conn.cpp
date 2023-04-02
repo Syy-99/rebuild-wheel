@@ -10,25 +10,32 @@ using std::pair;
 #define listenfdLT //水平触发阻塞
 
 // 网站根目录
-const char *doc_root = "TinyWebServer/root"; 
+const char *doc_root = "/home/syy/rebuild-wheel/TinyWebServer/root"; 
 
 locker m_lock;
 
-//对文件描述符设置非阻塞
+// 初始化静态成员变量
+int http_conn::m_user_count = 0;
+int http_conn::m_epollfd = -1;
+
+
+// ============================================帮助函数：begin=========================
+//将socket套接字设置非阻塞
 int setnonblocking(int fd)
 {
-    int old_option = fcntl(fd, F_GETFL);
-    int new_option = old_option | O_NONBLOCK;
-    fcntl(fd, F_SETFL, new_option);
+    int old_option = fcntl(fd, F_GETFL);    // 获得socket本身的设置
+    int new_option = old_option | O_NONBLOCK;   // 添加非阻塞设置
+    fcntl(fd, F_SETFL, new_option); // 重新设置socket
     return old_option;
 }
 
-//将内核事件表注册读事件，ET模式，选择开启EPOLLONESHOT
+//在内核事件表注册读事件，ET模式，选择开启EPOLLONESHOT
 void addfd(int epollfd, int fd, bool one_shot)
 {
     epoll_event event;
     event.data.fd = fd;
 
+    // EPOLLIN: 套接字可读；EPOLLET：设置边缘触发；EPOLLRDHUP： 对应的文件描述符被挂断
 #ifdef connfdET
     event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
 #endif
@@ -45,19 +52,23 @@ void addfd(int epollfd, int fd, bool one_shot)
     event.events = EPOLLIN | EPOLLRDHUP;    // 监听套接字只需要读事件和挂起事件
 #endif
 
+    // 对应监听套接字，不开启EPOLLONESHOT
+    // 对于ET模式的连接套接字，为了让连接只被一个线程处理，开启EPOLLONESHOT
     if (one_shot)
         event.events |= EPOLLONESHOT;
     
     epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
-    setnonblocking(fd);    // 设定监听套接字非阻塞读
+    setnonblocking(fd);    // 设定套接字非阻塞读
 }
 
-//将事件重置为EPOLLONESHOT
+//将socket重置为EPOLLONESHOT进行监听
+// ev决定该socket是接受请求还是发送响应
 void modfd(int epollfd, int fd, int ev)
 {
     epoll_event event;
     event.data.fd = fd;
 
+// 注意到，这里只考虑连接套接字，和我们上面的分析一致
 #ifdef connfdET
     event.events = ev | EPOLLET | EPOLLONESHOT | EPOLLRDHUP;
 #endif
@@ -74,6 +85,89 @@ void removefd(int epollfd, int fd)
 {
     epoll_ctl(epollfd, EPOLL_CTL_DEL, fd, 0);
     close(fd);
+}
+// ============================================帮助函数：end=========================
+
+//将表中的用户名和密码放入map
+map<string, string> users;
+void http_conn::initmysql_result(connection_pool *coonPool)
+{
+     //先从连接池中取一个连接
+    MYSQL *mysql = NULL;
+    connectionRAII mysqlcon(&mysql, coonPool);
+
+    //在user表中检索username，passwd数据
+    if (mysql_query(mysql, "SELECT username,passwd FROM user"))
+    {
+        LOG_ERROR("SELECT error:%s\n", mysql_error(mysql)); //账户错误，记录到日志中
+    }
+
+    //从表中检索完整的结果集
+    MYSQL_RES *result = mysql_store_result(mysql);
+
+    //返回结果集中的列数
+    int num_fields = mysql_num_fields(result);
+
+     //返回所有字段结构的数组
+    MYSQL_FIELD *fields = mysql_fetch_fields(result);
+
+    //从结果集中获取下一行，将对应的用户名和密码，存入map中
+    while (MYSQL_ROW row = mysql_fetch_row(result))
+    {
+        string temp1(row[0]);   // 第一列是账号
+        string temp2(row[1]);   // 第二列是密码
+        users[temp1] = temp2;
+    }
+}
+
+
+//关闭一个连接，客户总量减一
+void http_conn::close_conn(bool real_close)
+{
+    if (real_close && (m_sockfd != -1))
+    {
+        removefd(m_epollfd, m_sockfd);  // 删除要监听的连接套接字
+        m_sockfd = -1;
+        m_user_count--;
+    }
+}
+
+
+//初始化连接,外部调用初始化连接套接字
+void http_conn::init(int sockfd, const sockaddr_in &addr)
+{
+    m_sockfd = sockfd;
+    m_address = addr;
+
+    addfd(m_epollfd, sockfd, true); // 将连接套接字加入epoll监听（注意对连接套接字开启EPOLLONESHOT)
+
+    m_user_count++;     // 客户端数量加1
+
+    init(); // 初始化其他成员
+}
+
+//初始化新接受的连接（对私有成员进行初始化)
+//check_state默认为分析请求行状态
+void http_conn::init()
+{
+    mysql = NULL;
+    bytes_to_send = 0;
+    bytes_have_send = 0;
+    m_check_state = CHECK_STATE_REQUESTLINE;
+    m_linger = false;
+    m_method = GET;
+    m_url = 0;
+    m_version = 0;
+    m_content_length = 0;
+    m_host = 0;
+    m_start_line = 0;
+    m_checked_idx = 0;
+    m_read_idx = 0;
+    m_write_idx = 0;
+    cgi = 0;
+    memset(m_read_buf, '\0', READ_BUFFER_SIZE);
+    memset(m_write_buf, '\0', WRITE_BUFFER_SIZE);
+    memset(m_real_file, '\0', FILENAME_LEN);
 }
 
 
@@ -123,95 +217,16 @@ bool http_conn::read_once()
 }
 
 
-
-//将表中的用户名和密码放入map
-map<string, string> users;
-void http_conn::initmysql_result(connection_pool *coonPool)
-{
-     //先从连接池中取一个连接
-    MYSQL *mysql = NULL;
-    connectionRAII mysqlcon(&mysql, coonPool);
-
-    //在user表中检索username，passwd数据
-    if (mysql_query(mysql, "SELECT username,passwd FROM user"))
-    {
-        LOG_ERROR("SELECT error:%s\n", mysql_error(mysql)); //账户错误，记录到日志中
-    }
-
-    //从表中检索完整的结果集
-    MYSQL_RES *result = mysql_store_result(mysql);
-
-    //返回结果集中的列数
-    int num_fields = mysql_num_fields(result);
-
-     //返回所有字段结构的数组
-    MYSQL_FIELD *fields = mysql_fetch_fields(result);
-
-    //从结果集中获取下一行，将对应的用户名和密码，存入map中
-    while (MYSQL_ROW row = mysql_fetch_row(result))
-    {
-        string temp1(row[0]);   // 第一列是账号
-        string temp2(row[1]);   // 第二列是密码
-        users[temp1] = temp2;
-    }
-}
-
-//初始化连接,外部调用初始化套接字地址
-void http_conn::init(int sockfd, const sockaddr_in &addr)
-{
-    m_sockfd = sockfd;
-    m_address = addr;
-
-    addfd(m_epollfd, sockfd, true); // 将连接套接字加入epoll监听
-
-    m_user_count++;
-
-    init();
-}
-
-//初始化新接受的连接（对私有成员进行初始化)
-//check_state默认为分析请求行状态
-void http_conn::init()
-{
-    mysql = NULL;
-    bytes_to_send = 0;
-    bytes_have_send = 0;
-    m_check_state = CHECK_STATE_REQUESTLINE;
-    m_linger = false;
-    m_method = GET;
-    m_url = 0;
-    m_version = 0;
-    m_content_length = 0;
-    m_host = 0;
-    m_start_line = 0;
-    m_checked_idx = 0;
-    m_read_idx = 0;
-    m_write_idx = 0;
-    cgi = 0;
-    memset(m_read_buf, '\0', READ_BUFFER_SIZE);
-    memset(m_write_buf, '\0', WRITE_BUFFER_SIZE);
-    memset(m_real_file, '\0', FILENAME_LEN);
-}
-
-//关闭连接，关闭一个连接，客户总量减一
-void http_conn::close_conn(bool real_close)
-{
-    if (real_close && (m_sockfd != -1))
-    {
-        removefd(m_epollfd, m_sockfd);
-        m_sockfd = -1;
-        m_user_count--;
-    }
-}
-
+// !!!!!!!!!!!!!!关键代码!!!!!!!!!!!!!!!!!!!
 // 处理HTTP请求
+// 当某个连接套接字可以读，会加入请求队列，然后被工作线程获得，调用该函数来解析报文，并进行报文响应
 void http_conn::process()
 {
     // 利用状态机进行HTTP请求报文解析
     HTTP_CODE read_ret = process_read();
     if (read_ret == NO_REQUEST)
     {
-        modfd(m_epollfd, m_sockfd, EPOLLIN);
+        modfd(m_epollfd, m_sockfd, EPOLLIN);  // 需要继续监听该连接套接字，判断是否可读
         return;
     }
 
@@ -221,7 +236,7 @@ void http_conn::process()
     {
         close_conn();
     }
-    modfd(m_epollfd, m_sockfd, EPOLLOUT);
+    modfd(m_epollfd, m_sockfd, EPOLLOUT);   // 需要继续监听该连接套接字，判断是否，可写
 }
 
 // =======================主从状态机解析HTTP请求报文: start==================================
@@ -745,6 +760,7 @@ bool http_conn::add_content(const char *content)
 }
 // ===========================根据文件分析的结果，构造响应报文： end========================
 
+// 解除文件映射
 void http_conn::unmap()
 {
     if (m_file_address)
