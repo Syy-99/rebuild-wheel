@@ -41,7 +41,7 @@
 
 - 见下面介绍
 
-### 阻塞队列——`block_<font color='red'>Queue.h`
+### 阻塞队列——`block_queue.h`
 
 阻塞队列类中封装了生产者-消费者模型，其中push成员是生产者，pop成员是消费者。
 
@@ -253,7 +253,7 @@ void async_write_log() // 异步线程，将日志写到文件中
 >   - 首先，日志插入缓存是按其生成时间插入的
 >   - 其次，日志线程是单线程，每次按顺序从缓存中去日志信息写入文件，因此不会出现乱序问题
 
-## 数据库连接池——`s<font color='red'>Ql_connection_pool.h`&`s<font color='red'>Ql_connection_pool.cpp`
+## 数据库连接池——`sql_connection_pool.h`&`sql_connection_pool.cpp`
 
 - 数据库连接池对象管理一组数据库连接，由程序动态地对池中的连接进行使用，释放。
 - 连接池对象是单例模式
