@@ -13,6 +13,9 @@
 #include <stdint.h>
 #include <memory>
 #include <list>
+#include <sstream>
+#include <fstream>
+#include <vector>
 
 namespace sylar {
 
@@ -24,22 +27,30 @@ class LogEvent {
 public:
     typedef std::shared_ptr<LogEvent> ptr;  // 使用智能指针管理该类对象
     LogEvent();
+
+    const char * getFile() const { return m_file; }
+    int32_t getLine() const { return m_line; }
+    uint32_t getElapse() const { return m_elapse; }
+    uint32_t getThread() const { return m_thread_id};
+    uint32_t getFiberId() const { return m_fiber_id};
+    uint64_t getTime() const { return m_time};
+    const std::string& getContent() const { return m_content; }
 private:
-    // 日志写入的日志文件名
+    /// 日志写入的日志文件名
     const char * m_file = nullptr;
-    // 日志写入的日志文件的行号
+    /// 日志写入的日志文件的行号
     int32_t m_line = 0;
 
-    // 线程ID   ?
+    /// 线程ID   ?
     uint32_t m_thread_id = 0;
-    // 协程ID   ?
+    /// 协程ID   ?
     uint32_t m_fiber_id = 0;
 
-    // 程序启动到现在的毫秒数
+    /// 程序启动到现在的毫秒数
     uint32_t m_elapse = 0;  
-    // 时间戳
+    /// 时间戳
     uint64_t m_time = 0;
-    // 日志内容
+    /// 日志内容
     std::string m_content;
 };
 
@@ -52,6 +63,7 @@ public:
      * @brief 日志级别枚举
      */
     enum Level {
+        UNKNOW = 0,
         DEBUG = 1,
         INFO = 2,
         WARN = 3,
@@ -59,6 +71,7 @@ public:
         FATAL = 5,
     };
 
+    static const char* toString(LogLevel::Level level);
 };
 
 /**
@@ -67,8 +80,30 @@ public:
 class LogFormatter {
 public:
    typedef std::shared_ptr<LogAppender> ptr;
+   LogFormatter(const std::string &pattern);
 
-   std::string format(LogEvent::ptr event);
+   std::string format(LogLevel::Level level, LogEvent::ptr event);
+
+public:
+    /**
+     * @brief 日志内容项格式化
+     */
+     class FormatItem{
+     public:
+         typedef std::shared_ptr<FormatItem> ptr;
+         virtual ~FormatItem() {};
+
+         virtual void format(std::ostream& os, LogLevel::Level level, LogEvent::ptr event) = 0;
+     };
+
+    /**
+     * @brief 初始化,解析日志模板
+     */
+    void init();
+private:
+    std::string m_pattern;
+    std::vector<FormatItem::ptr> m_items;
+
 };
 
 /**
@@ -79,11 +114,24 @@ public:
     typedef std::shared_ptr<LogAppender> ptr;  // 使用智能指针管理该类对象
     virtual ~LogAppender() {}
     
-    void Log(LogLevel::Level levle, LogEvent::ptr event);
-    
-private:
-    // 日志级别
+    void log(LogLevel::Level level, LogEvent::ptr event) = 0;
+
+    /**
+ * @brief 更改日志格式器
+ */
+    void setFormatter(LogFormatter::ptr val) { m_formatter = val; }
+
+    /**
+     * @brief 获取日志格式器
+     */
+    LogFormatter::ptr getFormatter() const { return m_formatter; }
+
+protected:
+    /// 日志级别
     LogLevel::Level m_level;
+
+    /// 日志格式器: 每个日志输出地有它自己输出的格式
+    LogFormatter::ptr m_formatter;
 };
 
 
@@ -175,6 +223,10 @@ private:
  * @brief 输出到控制台的Appender
  */
 class StdoutLogAppender : public LogAppender {
+public:
+    typedef std::shared_ptr<StdoutLogAppender> ptr;
+    void log(LogLevel::Level level, LogEvent::ptr event) override;
+private:
 
 };
 
@@ -182,7 +234,17 @@ class StdoutLogAppender : public LogAppender {
  * @brief 输出到文件的Appender
  */
 class FileLogAppender : public LogAppender {
+public:
+    typedef std::shared_ptr<FileLogAppender> ptr;
+    FileLogAppender(const std::string & file_name);
+    void log(LogLevel::Level level, LogEvent::ptr event) override;
 
+    bool reopen();
+private:
+    /// 文件路径
+    std::string m_filename;
+    /// 文件流
+    std::ofstream m_filestream;
 };
 
 
