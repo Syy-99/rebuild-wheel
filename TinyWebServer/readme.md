@@ -194,16 +194,6 @@ else
 ```
 - 这个应该有问题，在我的代码中添加了注释的代码
 
-<font color='red'>Q: 代码逻辑问题，下面的代码，当`log_queue`满了，那这个日志记录不就丢失了?</font>
-
-```c++
-if (log_is_async_ && !log_queue_->full())   // 异步日志先写到内存中
-{
-    log_queue_->push(log_str);
-}
-```
-- 这个问题，和上面将日志信息写入一个满的block_queue类似
-
 
 <font color='red'>Q: 代码设计问题：异步日志的意义在哪里? </font>
 
