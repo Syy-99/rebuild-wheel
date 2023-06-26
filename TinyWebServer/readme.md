@@ -1,4 +1,4 @@
-# TinyWegServer
+# TinyWebServer
 
 ## 项目描述
 
